@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-person-badge"></i> {{ cliente.nome }}</h2>
+        <p class="text-muted">Detalhes do cliente e histórico de interações</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        {% if cliente.telefone %}
+        <a href="https://wa.me/55{{ cliente.telefone|replace('(', '')|replace(')', '')|replace(' ', '')|replace('-', '')|replace('+', '') }}" 
+           target="_blank" 
+           class="btn btn-success">
+            <i class="bi bi-whatsapp"></i> WhatsApp
+        </a>
+        {% endif %}
+        <button class="btn btn-primary-custom" data-bs-toggle="modal" data-bs-target="#novaInteracao">
+            <i class="bi bi-plus-circle"></i> Interação
+        </button>
+        <button class="btn btn-outline-primary-custom" data-bs-toggle="modal" data-bs-target="#editarCliente">
+            <i class="bi bi-pencil"></i> Editar
+        </button>
+        <form method="POST" action="{{ url_for('cliente_delete', id=cliente.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza?')">
+            <button type="submit" class="btn btn-outline-danger">
+                <i class="bi bi-trash"></i>
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12 col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="fw-bold">Informações</h5>
+                <hr>
+                <p><strong>Nome:</strong> {{ cliente.nome }}</p>
+                {% if cliente.telefone %}
+                <p><strong>Telefone:</strong> 
+                    <a href="https://wa.me/55{{ cliente.telefone|replace('(', '')|replace(')', '')|replace(' ', '')|replace('-', '')|replace('+', '') }}" 
+                       target="_blank" 
+                       class="whatsapp-link">
+                        <i class="bi bi-whatsapp"></i> {{ cliente.telefone }}
+                    </a>
+                </p>
+                {% endif %}
+                {% if cliente.email %}
+                <p><strong>E-mail:</strong> <i class="bi bi-envelope"></i> {{ cliente.email }}</p>
+                {% endif %}
+                {% if cliente.cnpj_cpf %}
+                <p><strong>CNPJ/CPF:</strong> {{ cliente.cnpj_cpf }}</p>
+                {% endif %}
+                <p><strong>Status:</strong> 
+                    <span class="badge {% if cliente.status == 'ativo' %}bg-success{% elif cliente.status == 'potencial' %}bg-warning{% else %}bg-danger{% endif %}">
+                        {{ cliente.status|upper }}
+                    </span>
+                </p>
+                <p><strong>Tipo:</strong> {{ cliente.tipo|replace('_', ' ')|title }}</p>
+                {% if cliente.endereco %}
+                <p><strong>Endereço:</strong> {{ cliente.endereco }}</p>
+                {% endif %}
+                {% if cliente.cidade %}
+                <p><strong>Cidade/UF:</strong> {{ cliente.cidade }}{% if cliente.estado %}/{{ cliente.estado }}{% endif %}</p>
+                {% endif %}
+                <p><strong>Cadastro:</strong> 
+                    {% if cliente.data_cadastro is string %}
+                        {{ cliente.data_cadastro[:10] }}
+                    {% else %}
+                        {{ cliente.data_cadastro.strftime('%d/%m/%Y') }}
+                    {% endif %}
+                </p>
+                <p><strong>Total Interações:</strong> <span class="badge bg-info">{{ cliente.total_interacoes or 0 }}</span></p>
+                {% if cliente.ultimo_contato %}
+                <p><strong>Último Contato:</strong> 
+                    {% if cliente.ultimo_contato is string %}
+                        {{ cliente.ultimo_contato[:10] }}
+                    {% else %}
+                        {{ cliente.ultimo_contato.strftime('%d/%m/%Y') }}
+                    {% endif %}
+                </p>
+                {% endif %}
+                {% if cliente.proximo_contato %}
+                <p><strong>Próximo Contato:</strong> 
+                    {% if cliente.proximo_contato is string %}
+                        {{ cliente.proximo_contato[:10] }}
+                    {% else %}
+                        {{ cliente.proximo_contato.strftime('%d/%m/%Y') }}
+                    {% endif %}
+                </p>
+                {% endif %}
+                {% if cliente.observacao %}
+                <hr>
+                <p><strong>Observação:</strong></p>
+                <p class="text-muted small">{{ cliente.observacao }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-12 col-md-8">
+        <div class="card">
+            <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap">
+                <h5 class="fw-bold mb-0"><i class="bi bi-chat-dots"></i> Histórico de Interações</h5>
+                <span class="badge bg-primary">{{ interacoes|length }}</span>
+            </div>
+            <div class="card-body">
+                {% if interacoes %}
+                    {% for interacao in interacoes %}
+                    <div class="d-flex mb-3">
+                        <div class="flex-shrink-0">
+                            <div class="bg-light rounded-circle p-2 me-2" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                                <i class="bi 
+                                    {% if interacao.tipo == 'ligacao' %}bi-telephone-fill text-primary
+                                    {% elif interacao.tipo == 'email' %}bi-envelope-fill text-info
+                                    {% elif interacao.tipo == 'reuniao' %}bi-people-fill text-success
+                                    {% elif interacao.tipo == 'whatsapp' %}bi-whatsapp text-success
+                                    {% else %}bi-chat-fill text-secondary{% endif %}
+                                "></i>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center flex-wrap">
+                                <span class="badge bg-secondary me-2">{{ interacao.tipo|upper }}</span>
+                                <small class="text-muted">
+                                    {% if interacao.data_interacao is string %}
+                                        {{ interacao.data_interacao[:16] }}
+                                    {% else %}
+                                        {{ interacao.data_interacao.strftime('%d/%m/%Y %H:%M') }}
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <p class="mb-0 mt-1">{{ interacao.descricao }}</p>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <p class="text-muted text-center py-3">
+                    <i class="bi bi-chat fs-1 d-block mb-2"></i>
+                    Nenhuma interação registrada
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL NOVA INTERAÇÃO ===== -->
+<div class="modal fade" id="novaInteracao" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nova Interação</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('cliente_interacao', cliente_id=cliente.id) }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tipo</label>
+                        <select name="tipo" class="form-select" required>
+                            <option value="ligacao">Ligação</option>
+                            <option value="email">E-mail</option>
+                            <option value="reuniao">Reunião</option>
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="visita">Visita</option>
+                            <option value="outro">Outro</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Descrição</label>
+                        <textarea name="descricao" class="form-control" rows="3" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Registrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL EDITAR CLIENTE ===== -->
+<div class="modal fade" id="editarCliente" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Cliente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('cliente_editar', id=cliente.id) }}">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Nome *</label>
+                                <input type="text" name="nome" class="form-control" value="{{ cliente.nome }}" required>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Tipo</label>
+                                <select name="tipo" class="form-select">
+                                    <option value="pessoa_fisica" {% if cliente.tipo == 'pessoa_fisica' %}selected{% endif %}>Pessoa Física</option>
+                                    <option value="pessoa_juridica" {% if cliente.tipo == 'pessoa_juridica' %}selected{% endif %}>Pessoa Jurídica</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Telefone</label>
+                                <input type="text" name="telefone" class="form-control" value="{{ cliente.telefone or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">E-mail</label>
+                                <input type="email" name="email" class="form-control" value="{{ cliente.email or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">CNPJ/CPF</label>
+                                <input type="text" name="cnpj_cpf" class="form-control" value="{{ cliente.cnpj_cpf or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Status</label>
+                                <select name="status" class="form-select">
+                                    <option value="potencial" {% if cliente.status == 'potencial' %}selected{% endif %}>Potencial</option>
+                                    <option value="ativo" {% if cliente.status == 'ativo' %}selected{% endif %}>Ativo</option>
+                                    <option value="inativo" {% if cliente.status == 'inativo' %}selected{% endif %}>Inativo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Endereço</label>
+                                <input type="text" name="endereco" class="form-control" value="{{ cliente.endereco or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Cidade</label>
+                                <input type="text" name="cidade" class="form-control" value="{{ cliente.cidade or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Estado</label>
+                                <input type="text" name="estado" class="form-control" value="{{ cliente.estado or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Próximo Contato</label>
+                                <input type="date" name="proximo_contato" class="form-control" 
+                                    value="{% if cliente.proximo_contato %}{% if cliente.proximo_contato is string %}{{ cliente.proximo_contato }}{% else %}{{ cliente.proximo_contato.strftime('%Y-%m-%d') }}{% endif %}{% endif %}">
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Observação</label>
+                                <textarea name="observacao" class="form-control" rows="2">{{ cliente.observacao or '' }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Atualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

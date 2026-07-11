@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title> Sistema de Confecção</title>
+    
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <style>
+        /* ===== VARIÁVEIS ===== */
+        :root {
+            --primary-color: #1a1a2e;
+            --secondary-color: #e94560;
+            --success-color: #27ae60;
+            --whatsapp-color: #25D366;
+            --sidebar-width: 240px;
+        }
+        
+        /* ===== RESET ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            height: 100%;
+            background: #f0f2f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        /* ===== LAYOUT PRINCIPAL ===== */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+            width: 100%;
+        }
+        
+        /* ===== SIDEBAR ===== */
+        .sidebar {
+            width: var(--sidebar-width);
+            min-height: 100vh;
+            background: var(--primary-color);
+            color: white;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .sidebar-brand {
+            padding: 20px 15px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .sidebar-brand h4 {
+            font-weight: 700;
+            color: var(--secondary-color);
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        .sidebar-brand h4 i {
+            margin-right: 8px;
+        }
+        .sidebar-brand small {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.6rem;
+            letter-spacing: 2px;
+            display: block;
+            margin-top: 2px;
+        }
+        
+        .sidebar-nav {
+            flex: 1;
+            padding: 10px 0;
+            overflow-y: auto;
+        }
+        .sidebar-nav .nav-link {
+            color: rgba(255,255,255,0.7);
+            padding: 12px 20px;
+            border-radius: 0;
+            margin: 2px 0;
+            transition: all 0.3s;
+            border-left: 3px solid transparent;
+            font-weight: 500;
+            text-decoration: none;
+            display: block;
+            font-size: 0.9rem;
+        }
+        .sidebar-nav .nav-link:hover {
+            background: rgba(255,255,255,0.05);
+            color: white;
+            border-left-color: var(--secondary-color);
+        }
+        .sidebar-nav .nav-link.active {
+            background: rgba(233, 69, 96, 0.15);
+            color: white;
+            border-left-color: var(--secondary-color);
+        }
+        .sidebar-nav .nav-link i {
+            margin-right: 12px;
+            width: 20px;
+            text-align: center;
+            font-size: 1rem;
+        }
+        
+        .sidebar-footer {
+            padding: 15px 20px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            flex-shrink: 0;
+        }
+        .sidebar-footer .nav-link {
+            color: rgba(255,255,255,0.5);
+            font-size: 0.85rem;
+            text-decoration: none;
+            display: block;
+            padding: 8px 0;
+            transition: all 0.3s;
+        }
+        .sidebar-footer .nav-link:hover {
+            color: white;
+        }
+        .sidebar-footer .nav-link i {
+            margin-right: 10px;
+        }
+        
+        /* ===== BOTÃO TOGGLE MOBILE ===== */
+        .sidebar-toggle {
+            display: none;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            width: 100%;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .sidebar-toggle:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        
+        /* ===== MAIN CONTENT ===== */
+        .main-content {
+            flex: 1;
+            padding: 25px 30px;
+            min-height: 100vh;
+            background: #f0f2f5;
+            overflow-x: hidden;
+        }
+        
+        .page-header {
+            margin-bottom: 25px;
+        }
+        .page-header h2 {
+            font-weight: 700;
+            color: var(--primary-color);
+            font-size: 1.6rem;
+            margin-bottom: 5px;
+        }
+        .page-header h2 i {
+            margin-right: 10px;
+            color: var(--secondary-color);
+        }
+        .page-header .text-muted {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        
+        /* ===== CARDS ===== */
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.06);
+            transition: transform 0.2s, box-shadow 0.2s;
+            background: white;
+            margin-bottom: 20px;
+        }
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 25px rgba(0,0,0,0.1);
+        }
+        .card-stat {
+            border-left: 4px solid var(--secondary-color);
+            padding: 18px 22px;
+            position: relative;
+            min-height: 90px;
+        }
+        .card-stat .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+        }
+        .card-stat .stat-label {
+            color: #6c757d;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }
+        .card-stat .stat-icon {
+            position: absolute;
+            right: 18px;
+            top: 18px;
+            font-size: 2.2rem;
+            opacity: 0.1;
+        }
+        
+        /* ===== BOTÕES ===== */
+        .btn-primary-custom {
+            background: var(--secondary-color);
+            border: none;
+            color: white;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-primary-custom:hover {
+            background: #c0392b;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.3);
+        }
+        .btn-outline-primary-custom {
+            border: 2px solid var(--secondary-color);
+            color: var(--secondary-color);
+            background: transparent;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+        }
+        .btn-outline-primary-custom:hover {
+            background: var(--secondary-color);
+            color: white;
+        }
+        
+        /* ===== WHATSAPP ===== */
+        .whatsapp-link {
+            color: var(--whatsapp-color);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .whatsapp-link:hover {
+            color: #128C7E;
+            text-decoration: underline;
+        }
+        .whatsapp-link i {
+            font-size: 1.1rem;
+            margin-right: 4px;
+        }
+        
+        /* ===== FINANCEIRO CARDS ===== */
+        .financeiro-card {
+            border-left: 4px solid;
+            padding: 18px 22px;
+            background: white;
+            border-radius: 12px;
+            height: 100%;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .financeiro-card.entrada { border-color: var(--success-color); }
+        .financeiro-card.saida { border-color: #e74c3c; }
+        .financeiro-card.saldo { border-color: var(--secondary-color); }
+        .financeiro-card .valor {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        .financeiro-card .valor.entrada { color: var(--success-color); }
+        .financeiro-card .valor.saida { color: #e74c3c; }
+        .financeiro-card .valor.saldo { color: var(--secondary-color); }
+        .financeiro-card .text-muted {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* ===== TABELAS ===== */
+        .table-responsive {
+            border-radius: 12px;
+            overflow-x: auto;
+        }
+        .table {
+            font-size: 0.9rem;
+            margin-bottom: 0;
+            width: 100%;
+        }
+        .table thead th {
+            background: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            border: none;
+            padding: 12px 15px;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .table tbody td {
+            padding: 12px 15px;
+            vertical-align: middle;
+        }
+        .table tbody tr:hover {
+            background: rgba(0,0,0,0.02);
+        }
+        .table tbody tr.table-success {
+            background: #d4edda;
+        }
+        
+        /* ===== BADGES ===== */
+        .badge-status {
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 0.7rem;
+        }
+        .badge-status.em-andamento {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        /* ===== BOTÕES DE AÇÃO ===== */
+        .btn-group-sm .btn {
+            padding: 4px 10px;
+            font-size: 0.75rem;
+        }
+        
+        /* ===== MODAIS ===== */
+        .modal-content {
+            border-radius: 16px;
+            border: none;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            border-bottom: 1px solid #f0f0f0;
+            padding: 18px 24px;
+        }
+        .modal-body {
+            padding: 24px;
+        }
+        .modal-footer {
+            border-top: 1px solid #f0f0f0;
+            padding: 16px 24px;
+        }
+        
+        /* ===== ALERTAS ===== */
+        .alert {
+            border-radius: 10px;
+            border: none;
+            font-size: 0.9rem;
+            padding: 14px 20px;
+        }
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        /* ===== SCROLLBAR ===== */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--secondary-color);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c0392b;
+        }
+        
+        /* ===== ANIMAÇÃO ===== */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .card {
+            animation: fadeIn 0.3s ease;
+        }
+        
+        /* ===== UTILITÁRIOS ===== */
+        .text-whatsapp { color: var(--whatsapp-color); }
+        .gap-1 { gap: 4px; }
+        .gap-2 { gap: 8px; }
+        .gap-3 { gap: 12px; }
+        .flex-wrap { flex-wrap: wrap; }
+        .align-items-center { align-items: center; }
+        .justify-content-between { justify-content: space-between; }
+        
+        /* ====================================================== */
+        /* ===== RESPONSIVO ===== */
+        /* ====================================================== */
+        
+        /* TABLET E MOBILE */
+        @media (max-width: 1024px) {
+            :root {
+                --sidebar-width: 200px;
+            }
+            .main-content {
+                padding: 20px;
+            }
+            .card-stat .stat-number {
+                font-size: 1.6rem;
+            }
+        }
+        
+        @media (max-width: 991px) {
+            .app-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                min-height: auto;
+                height: auto;
+                position: relative;
+                top: 0;
+            }
+            
+            .sidebar-toggle {
+                display: block;
+            }
+            
+            .sidebar-nav {
+                display: none;
+                padding: 10px 0;
+            }
+            .sidebar-nav.open {
+                display: block;
+            }
+            .sidebar-nav .nav-link {
+                padding: 10px 20px;
+                font-size: 0.9rem;
+                border-left: none;
+                border-bottom: 1px solid rgba(255,255,255,0.05);
+            }
+            .sidebar-nav .nav-link:hover {
+                border-left: none;
+                background: rgba(255,255,255,0.05);
+            }
+            .sidebar-nav .nav-link.active {
+                border-left: none;
+                background: rgba(233, 69, 96, 0.15);
+            }
+            
+            .sidebar-footer {
+                display: none;
+            }
+            
+            .main-content {
+                padding: 16px;
+                min-height: auto;
+            }
+            
+            .page-header h2 {
+                font-size: 1.3rem;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                padding: 12px;
+            }
+            
+            .page-header h2 {
+                font-size: 1.1rem;
+            }
+            .page-header .text-muted {
+                font-size: 0.75rem;
+            }
+            
+            .card-stat {
+                padding: 12px 16px;
+                min-height: 70px;
+            }
+            .card-stat .stat-number {
+                font-size: 1.3rem;
+            }
+            .card-stat .stat-label {
+                font-size: 0.65rem;
+            }
+            .card-stat .stat-icon {
+                font-size: 1.6rem;
+                right: 12px;
+                top: 12px;
+            }
+            
+            .financeiro-card {
+                padding: 12px 16px;
+            }
+            .financeiro-card .valor {
+                font-size: 1.2rem;
+            }
+            
+            .table {
+                font-size: 0.75rem;
+            }
+            .table thead th {
+                font-size: 0.65rem;
+                padding: 8px 10px;
+            }
+            .table tbody td {
+                padding: 8px 10px;
+            }
+            
+            .btn-primary-custom {
+                padding: 6px 14px;
+                font-size: 0.75rem;
+            }
+            .btn-outline-primary-custom {
+                padding: 5px 12px;
+                font-size: 0.75rem;
+            }
+            .btn-group-sm .btn {
+                padding: 3px 7px;
+                font-size: 0.65rem;
+            }
+            
+            .row.g-4 {
+                --bs-gutter-y: 0.8rem;
+                --bs-gutter-x: 0.8rem;
+            }
+            
+            .modal-dialog {
+                margin: 10px;
+            }
+            .modal-body {
+                padding: 15px;
+            }
+            
+            .hide-mobile {
+                display: none !important;
+            }
+            
+            .col-6 {
+                padding: 0 6px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .main-content {
+                padding: 8px;
+            }
+            
+            .page-header h2 {
+                font-size: 1rem;
+            }
+            
+            .card-stat .stat-number {
+                font-size: 1.1rem;
+            }
+            .card-stat .stat-label {
+                font-size: 0.55rem;
+            }
+            .card-stat {
+                padding: 10px 12px;
+                min-height: 60px;
+            }
+            
+            .financeiro-card .valor {
+                font-size: 1rem;
+            }
+            .financeiro-card {
+                padding: 10px 14px;
+            }
+            
+            .table {
+                font-size: 0.65rem;
+            }
+            .table thead th {
+                font-size: 0.55rem;
+                padding: 6px 8px;
+            }
+            .table tbody td {
+                padding: 6px 8px;
+            }
+            
+            .btn-primary-custom {
+                padding: 4px 10px;
+                font-size: 0.65rem;
+            }
+            .btn-group-sm .btn {
+                padding: 2px 5px;
+                font-size: 0.6rem;
+            }
+            .badge {
+                font-size: 0.55rem;
+                padding: 3px 8px;
+            }
+            
+            .modal-lg {
+                max-width: 100%;
+                margin: 5px;
+            }
+            
+            .sidebar-brand h4 {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <h4><i class="bi bi-box-seam"></i> Confecção</h4>
+                <small>GERENCIAMENTO</small>
+            </div>
+            
+            <button class="sidebar-toggle" onclick="toggleSidebar()">
+                <i class="bi bi-list"></i> Menu
+            </button>
+            
+            <nav class="sidebar-nav" id="sidebarNav">
+                <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
+                    <i class="bi bi-grid-1x2-fill"></i> Dashboard
+                </a>
+                <a class="nav-link {% if request.endpoint == 'estoque' %}active{% endif %}" href="{{ url_for('estoque') }}">
+                    <i class="bi bi-box-seam"></i> Estoque
+                </a>
+                <a class="nav-link {% if request.endpoint == 'producao' %}active{% endif %}" href="{{ url_for('producao') }}">
+                    <i class="bi bi-gear-fill"></i> Produção
+                </a>
+                <a class="nav-link {% if request.endpoint == 'colaboradores' %}active{% endif %}" href="{{ url_for('colaboradores') }}">
+                    <i class="bi bi-people-fill"></i> Colaboradores
+                </a>
+                <a class="nav-link {% if request.endpoint == 'financeiro' %}active{% endif %}" href="{{ url_for('financeiro') }}">
+                    <i class="bi bi-coin"></i> Financeiro
+                </a>
+                <a class="nav-link {% if request.endpoint == 'crm' %}active{% endif %}" href="{{ url_for('crm') }}">
+                    <i class="bi bi-person-lines-fill"></i> CRM
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="bi bi-box-arrow-right"></i> Sair
+                </a>
+            </div>
+        </aside>
+        
+        <!-- ===== MAIN CONTENT ===== -->
+        <main class="main-content">
+            <!-- Alertas -->
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ 'success' if 'sucesso' in message|lower else 'info' }} alert-dismissible fade show">
+                            <i class="bi bi-info-circle me-2"></i>
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <!-- Conteúdo -->
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    
+    <!-- ===== SCRIPTS ===== -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Toggle sidebar no mobile
+        function toggleSidebar() {
+            var nav = document.getElementById('sidebarNav');
+            nav.classList.toggle('open');
+        }
+        
+        // Fechar sidebar ao clicar em link no mobile
+        document.querySelectorAll('#sidebarNav .nav-link').forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth <= 991) {
+                    var nav = document.getElementById('sidebarNav');
+                    nav.classList.remove('open');
+                }
+            });
+        });
+        
+        // Fechar alertas automaticamente
+        setTimeout(function() {
+            document.querySelectorAll('.alert').forEach(function(alert) {
+                var bsAlert = bootstrap.Alert.getOrCreateInstance(alert);
+                bsAlert.close();
+            });
+        }, 5000);
+    </script>
+</body>
+</html>

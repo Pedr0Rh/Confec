@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-people-fill"></i> Colaboradores</h2>
+        <p class="text-muted">Gerencie sua equipe de produção</p>
+    </div>
+    <button class="btn btn-primary-custom" data-bs-toggle="modal" data-bs-target="#novoColaborador">
+        <i class="bi bi-person-plus"></i> Novo Colaborador
+    </button>
+</div>
+
+<div class="row g-3">
+    {% for colaborador in colaboradores %}
+    <div class="col-12 col-sm-6 col-lg-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="flex-shrink-0">
+                        <div class="bg-light rounded-circle p-2 me-2" style="width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
+                            <i class="bi bi-person fs-2" style="color: var(--secondary-color);"></i>
+                        </div>
+                    </div>
+                    <div class="flex-grow-1">
+                        <h5 class="fw-bold mb-0">{{ colaborador.nome }}</h5>
+                        <span class="badge bg-primary">{{ colaborador.funcao or 'Função não definida' }}</span>
+                        {% if colaborador.telefone %}
+                        <p class="mb-0 mt-1">
+                            <a href="https://wa.me/55{{ colaborador.telefone|replace('(', '')|replace(')', '')|replace(' ', '')|replace('-', '')|replace('+', '') }}" 
+                               target="_blank" 
+                               class="whatsapp-link">
+                                <i class="bi bi-whatsapp"></i> {{ colaborador.telefone }}
+                            </a>
+                        </p>
+                        {% endif %}
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarColaborador{{ colaborador.id }}" title="Editar">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <form method="POST" action="{{ url_for('colaborador_delete', id=colaborador.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza?')">
+                            <button type="submit" class="btn btn-outline-danger" title="Excluir">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {% if colaborador.observacao %}
+                <hr>
+                <p class="text-muted mb-0 small">{{ colaborador.observacao }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="col-12 text-center py-5">
+        <i class="bi bi-people fs-1 d-block mb-3" style="color: #dee2e6;"></i>
+        <p class="text-muted">Nenhum colaborador cadastrado</p>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- ===== MODAL NOVO COLABORADOR ===== -->
+<div class="modal fade" id="novoColaborador" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus"></i> Novo Colaborador</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Nome</label>
+                        <input type="text" name="nome" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Função</label>
+                        <select name="funcao" class="form-select">
+                            <option value="">Selecione...</option>
+                            {% for funcao in funcoes %}
+                            <option value="{{ funcao }}">{{ funcao }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Telefone</label>
+                        <input type="text" name="telefone" class="form-control" placeholder="(11) 99999-9999">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Observação</label>
+                        <textarea name="observacao" class="form-control" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Cadastrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAIS EDITAR COLABORADOR ===== -->
+{% for colaborador in colaboradores %}
+<div class="modal fade" id="editarColaborador{{ colaborador.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Colaborador</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('colaborador_editar', id=colaborador.id) }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Nome</label>
+                        <input type="text" name="nome" class="form-control" value="{{ colaborador.nome }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Função</label>
+                        <select name="funcao" class="form-select">
+                            <option value="">Selecione...</option>
+                            {% for funcao in funcoes %}
+                            <option value="{{ funcao }}" {% if colaborador.funcao == funcao %}selected{% endif %}>
+                                {{ funcao }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Telefone</label>
+                        <input type="text" name="telefone" class="form-control" value="{{ colaborador.telefone or '' }}" placeholder="(11) 99999-9999">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Observação</label>
+                        <textarea name="observacao" class="form-control" rows="2">{{ colaborador.observacao or '' }}</textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Atualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-box-seam"></i> Controle de Estoque</h2>
+        <p class="text-muted">Gerencie produtos e movimentações</p>
+    </div>
+    <button class="btn btn-primary-custom" data-bs-toggle="modal" data-bs-target="#novoProduto">
+        <i class="bi bi-plus-lg"></i> Novo Produto
+    </button>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #3498db;">
+            <div class="stat-number">{{ resumo.total_produtos or 0 }}</div>
+            <div class="stat-label">Total de Produtos</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #27ae60;">
+            <div class="stat-number">{{ resumo.total_itens or 0 }}</div>
+            <div class="stat-label">Itens em Estoque</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #f39c12;">
+            <div class="stat-number">R$ {{ "%.2f"|format(resumo.valor_total_estoque or 0) }}</div>
+            <div class="stat-label">Valor Total</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #e74c3c;">
+            <div class="stat-number">{{ resumo.produtos_abaixo_minimo or 0 }}</div>
+            <div class="stat-label">Abaixo do Mínimo</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th class="hide-mobile">SKU</th>
+                        <th>Produto</th>
+                        <th class="hide-mobile">Categoria</th>
+                        <th>Estoque</th>
+                        <th class="hide-mobile">Mínimo</th>
+                        <th class="hide-mobile">Preço Custo</th>
+                        <th class="hide-mobile">Preço Venda</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for produto in produtos %}
+                    <tr>
+                        <td class="hide-mobile"><strong>{{ produto.sku or '-' }}</strong></td>
+                        <td>{{ produto.nome }}</td>
+                        <td class="hide-mobile"><span class="badge bg-secondary">{{ produto.categoria or '-' }}</span></td>
+                        <td>
+                            <span class="{% if produto.estoque_atual <= produto.estoque_minimo %}text-danger fw-bold{% endif %}">
+                                {{ produto.estoque_atual }} {{ produto.unidade or 'UN' }}
+                            </span>
+                        </td>
+                        <td class="hide-mobile">{{ produto.estoque_minimo }}</td>
+                        <td class="hide-mobile">R$ {{ "%.2f"|format(produto.preco_custo or 0) }}</td>
+                        <td class="hide-mobile">R$ {{ "%.2f"|format(produto.preco_venda or 0) }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-info" onclick="window.location.href='/estoque/movimentacoes/{{ produto.id }}'" title="Movimentações">
+                                    <i class="bi bi-clock-history"></i>
+                                </button>
+                                <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#ajustarEstoque{{ produto.id }}" title="Ajustar Estoque">
+                                    <i class="bi bi-arrow-left-right"></i>
+                                </button>
+                                <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarProduto{{ produto.id }}" title="Editar">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                {% if produto.status == 'ativo' %}
+                                <button class="btn btn-outline-danger" onclick="if(confirm('Desativar?')){document.getElementById('deleteProduto{{ produto.id }}').submit()}" title="Desativar">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                                {% endif %}
+                                <form id="deleteProduto{{ produto.id }}" method="POST" action="{{ url_for('produto_delete', id=produto.id) }}" style="display:none;"></form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-4">
+                            <i class="bi bi-box fs-1 d-block mb-2"></i>
+                            <p class="text-muted">Nenhum produto cadastrado</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL NOVO PRODUTO ===== -->
+<div class="modal fade" id="novoProduto" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Novo Produto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('produto_novo') }}">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Nome *</label>
+                                <input type="text" name="nome" class="form-control" required>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">SKU</label>
+                                <input type="text" name="sku" class="form-control" placeholder="Código único">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Categoria</label>
+                                <input type="text" name="categoria" class="form-control" placeholder="Ex: Camisas">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Unidade</label>
+                                <select name="unidade" class="form-select">
+                                    <option value="UN">Unidade (UN)</option>
+                                    <option value="KG">Quilograma (KG)</option>
+                                    <option value="MT">Metro (MT)</option>
+                                    <option value="CX">Caixa (CX)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Preço Custo (R$)</label>
+                                <input type="number" name="preco_custo" class="form-control" step="0.01" min="0" value="0">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Preço Venda (R$)</label>
+                                <input type="number" name="preco_venda" class="form-control" step="0.01" min="0" value="0">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Estoque Mínimo</label>
+                                <input type="number" name="estoque_minimo" class="form-control" min="0" value="0">
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Estoque Inicial</label>
+                                <input type="number" name="estoque_atual" class="form-control" min="0" value="0">
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Descrição</label>
+                                <textarea name="descricao" class="form-control" rows="2"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAIS AJUSTAR ESTOQUE ===== -->
+{% for produto in produtos %}
+<div class="modal fade" id="ajustarEstoque{{ produto.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-arrow-left-right"></i> Ajustar Estoque - {{ produto.nome }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('estoque_ajustar', produto_id=produto.id) }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tipo</label>
+                        <select name="tipo" class="form-select" required>
+                            <option value="entrada">Entrada</option>
+                            <option value="saida">Saída</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Quantidade</label>
+                        <input type="number" name="quantidade" class="form-control" required min="1">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Descrição</label>
+                        <input type="text" name="descricao" class="form-control" placeholder="Motivo do ajuste">
+                    </div>
+                    <div class="alert alert-info">
+                        <strong>Estoque atual:</strong> {{ produto.estoque_atual }} {{ produto.unidade or 'UN' }}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Aplicar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAIS EDITAR PRODUTO ===== -->
+<div class="modal fade" id="editarProduto{{ produto.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Produto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('produto_editar', id=produto.id) }}">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Nome *</label>
+                                <input type="text" name="nome" class="form-control" value="{{ produto.nome }}" required>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">SKU</label>
+                                <input type="text" name="sku" class="form-control" value="{{ produto.sku or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Categoria</label>
+                                <input type="text" name="categoria" class="form-control" value="{{ produto.categoria or '' }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Unidade</label>
+                                <select name="unidade" class="form-select">
+                                    <option value="UN" {% if produto.unidade == 'UN' %}selected{% endif %}>Unidade (UN)</option>
+                                    <option value="KG" {% if produto.unidade == 'KG' %}selected{% endif %}>Quilograma (KG)</option>
+                                    <option value="MT" {% if produto.unidade == 'MT' %}selected{% endif %}>Metro (MT)</option>
+                                    <option value="CX" {% if produto.unidade == 'CX' %}selected{% endif %}>Caixa (CX)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Preço Custo (R$)</label>
+                                <input type="text" name="preco_custo" class="form-control" value="{{ "%.2f"|format(produto.preco_custo or 0)|replace('.', ',') }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Preço Venda (R$)</label>
+                                <input type="text" name="preco_venda" class="form-control" value="{{ "%.2f"|format(produto.preco_venda or 0)|replace('.', ',') }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Estoque Mínimo</label>
+                                <input type="number" name="estoque_minimo" class="form-control" min="0" value="{{ produto.estoque_minimo or 0 }}">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Status</label>
+                                <select name="status" class="form-select">
+                                    <option value="ativo" {% if produto.status == 'ativo' %}selected{% endif %}>Ativo</option>
+                                    <option value="inativo" {% if produto.status == 'inativo' %}selected{% endif %}>Inativo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Descrição</label>
+                                <textarea name="descricao" class="form-control" rows="2">{{ produto.descricao or '' }}</textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Atualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var modais = document.querySelectorAll('.modal');
+        modais.forEach(function(modal) {
+            modal.addEventListener('hidden.bs.modal', function() {
+                document.querySelectorAll('.modal-backdrop').forEach(function(el) {
+                    el.remove();
+                });
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+            });
+        });
+    });
+</script>
+{% endblock %}

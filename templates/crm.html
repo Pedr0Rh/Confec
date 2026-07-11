@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-person-lines-fill"></i> CRM - Gestão de Clientes</h2>
+        <p class="text-muted">Gerencie seus clientes, interações e histórico</p>
+    </div>
+    <button class="btn btn-primary-custom" data-bs-toggle="modal" data-bs-target="#novoCliente">
+        <i class="bi bi-person-plus"></i> Novo Cliente
+    </button>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #3498db;">
+            <div class="stat-number">{{ stats.total_clientes or 0 }}</div>
+            <div class="stat-label">Total de Clientes</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #27ae60;">
+            <div class="stat-number">{{ stats.ativos or 0 }}</div>
+            <div class="stat-label">Ativos</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #f39c12;">
+            <div class="stat-number">{{ stats.potenciais or 0 }}</div>
+            <div class="stat-label">Potenciais</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #9b59b6;">
+            <div class="stat-number">{{ stats.total_interacoes or 0 }}</div>
+            <div class="stat-label">Interações</div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-12 col-md-6">
+        <form action="{{ url_for('cliente_buscar') }}" method="GET" class="d-flex">
+            <input type="text" name="q" class="form-control me-2" placeholder="Buscar cliente..." value="{{ request.args.get('q', '') }}">
+            <button type="submit" class="btn btn-primary-custom"><i class="bi bi-search"></i></button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap">
+        <h5 class="fw-bold mb-0"><i class="bi bi-list"></i> Todos os Clientes</h5>
+        <span class="badge bg-primary">{{ clientes|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th class="hide-mobile">Contato</th>
+                        <th>Status</th>
+                        <th class="hide-mobile">Interações</th>
+                        <th class="hide-mobile">Último Contato</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cliente in clientes %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('cliente_detalhe', id=cliente.id) }}" class="fw-bold text-decoration-none">
+                                {{ cliente.nome }}
+                            </a>
+                            {% if cliente.telefone %}
+                            <br class="d-md-none">
+                            <small class="d-md-none">
+                                <a href="https://wa.me/55{{ cliente.telefone|replace('(', '')|replace(')', '')|replace(' ', '')|replace('-', '')|replace('+', '') }}" 
+                                   target="_blank" 
+                                   class="whatsapp-link">
+                                    <i class="bi bi-whatsapp"></i> {{ cliente.telefone }}
+                                </a>
+                            </small>
+                            {% endif %}
+                        </td>
+                        <td class="hide-mobile">
+                            {% if cliente.telefone %}
+                            <a href="https://wa.me/55{{ cliente.telefone|replace('(', '')|replace(')', '')|replace(' ', '')|replace('-', '')|replace('+', '') }}" 
+                               target="_blank" 
+                               class="whatsapp-link">
+                                <i class="bi bi-whatsapp"></i> {{ cliente.telefone }}
+                            </a>
+                            {% endif %}
+                            {% if cliente.email %}
+                            <br><small><i class="bi bi-envelope"></i> {{ cliente.email }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if cliente.status == 'ativo' %}bg-success{% elif cliente.status == 'potencial' %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ cliente.status|upper }}
+                            </span>
+                        </td>
+                        <td class="hide-mobile">
+                            <span class="badge bg-info">{{ cliente.total_interacoes or 0 }}</span>
+                            {% if cliente.interacoes_ultimo_mes and cliente.interacoes_ultimo_mes > 0 %}
+                            <span class="badge bg-success">+{{ cliente.interacoes_ultimo_mes }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="hide-mobile">
+                            {% if cliente.ultimo_contato %}
+                                {% if cliente.ultimo_contato is string %}
+                                    {{ cliente.ultimo_contato[:10] }}
+                                {% else %}
+                                    {{ cliente.ultimo_contato.strftime('%d/%m/%Y') }}
+                                {% endif %}
+                            {% else %}
+                            <span class="text-muted">Nunca</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                {% if cliente.telefone %}
+                                <a href="https://wa.me/55{{ cliente.telefone|replace('(', '')|replace(')', '')|replace(' ', '')|replace('-', '')|replace('+', '') }}" 
+                                   target="_blank" 
+                                   class="btn btn-success" 
+                                   title="WhatsApp">
+                                    <i class="bi bi-whatsapp"></i>
+                                </a>
+                                {% endif %}
+                                <a href="{{ url_for('cliente_detalhe', id=cliente.id) }}" class="btn btn-outline-primary" title="Detalhes">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            <p class="text-muted">Nenhum cliente cadastrado</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL NOVO CLIENTE ===== -->
+<div class="modal fade" id="novoCliente" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus"></i> Novo Cliente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('cliente_novo') }}">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Nome *</label>
+                                <input type="text" name="nome" class="form-control" required>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Tipo</label>
+                                <select name="tipo" class="form-select">
+                                    <option value="pessoa_fisica">Pessoa Física</option>
+                                    <option value="pessoa_juridica">Pessoa Jurídica</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Telefone</label>
+                                <input type="text" name="telefone" class="form-control" placeholder="(11) 99999-9999">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">E-mail</label>
+                                <input type="email" name="email" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">CNPJ/CPF</label>
+                                <input type="text" name="cnpj_cpf" class="form-control" placeholder="00.000.000/0000-00">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Status</label>
+                                <select name="status" class="form-select">
+                                    <option value="potencial">Potencial</option>
+                                    <option value="ativo">Ativo</option>
+                                    <option value="inativo">Inativo</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Endereço</label>
+                                <input type="text" name="endereco" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Cidade</label>
+                                <input type="text" name="cidade" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Estado</label>
+                                <input type="text" name="estado" class="form-control" placeholder="SP">
+                            </div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Próximo Contato</label>
+                                <input type="date" name="proximo_contato" class="form-control">
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Observação</label>
+                                <textarea name="observacao" class="form-control" rows="2"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Salvar Cliente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-4">
+    <div class="card-header bg-transparent">
+        <h5 class="fw-bold mb-0"><i class="bi bi-clock-history"></i> Últimas Interações</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th class="hide-mobile">Tipo</th>
+                        <th>Descrição</th>
+                        <th class="hide-mobile">Data</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for interacao in interacoes_recentes %}
+                    <tr>
+                        <td>{{ interacao.cliente_nome }}</td>
+                        <td class="hide-mobile">
+                            <span class="badge {% if interacao.tipo == 'ligacao' %}bg-primary{% elif interacao.tipo == 'email' %}bg-info{% elif interacao.tipo == 'reuniao' %}bg-success{% elif interacao.tipo == 'whatsapp' %}bg-success{% else %}bg-secondary{% endif %}">
+                                {{ interacao.tipo|upper }}
+                            </span>
+                        </td>
+                        <td>{{ interacao.descricao|truncate(30) }}</td>
+                        <td class="hide-mobile">
+                            {% if interacao.data_interacao is string %}
+                                {{ interacao.data_interacao[:16] }}
+                            {% else %}
+                                {{ interacao.data_interacao.strftime('%d/%m/%Y %H:%M') }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-3">
+                            Nenhuma interação registrada
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

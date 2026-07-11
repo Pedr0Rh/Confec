@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+    <h2><i class="bi bi-grid-1x2-fill"></i> Dashboard</h2>
+    <p class="text-muted">Visão geral da sua confecção</p>
+</div>
+
+<!-- ===== CARDS PRINCIPAIS ===== -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #3498db;">
+            <div class="stat-number">{{ total_colaboradores }}</div>
+            <div class="stat-label">Colaboradores</div>
+            <i class="bi bi-people stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #f39c12;">
+            <div class="stat-number">{{ total_producoes }}</div>
+            <div class="stat-label">Em Produção</div>
+            <i class="bi bi-gear stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #9b59b6;">
+            <div class="stat-number">{{ total_clientes }}</div>
+            <div class="stat-label">Clientes</div>
+            <i class="bi bi-person-lines-fill stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #27ae60;">
+            <div class="stat-number">{{ total_produtos }}</div>
+            <div class="stat-label">Produtos</div>
+            <i class="bi bi-box-seam stat-icon"></i>
+        </div>
+    </div>
+</div>
+
+<!-- ===== CARDS SECUNDÁRIOS ===== -->
+<div class="row g-3 mb-4">
+    <div class="col-4 col-md-4">
+        <div class="card card-stat" style="border-color: #2ecc71;">
+            <div class="stat-number">{{ total_estoque }}</div>
+            <div class="stat-label">Itens em Estoque</div>
+            <i class="bi bi-box stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-4 col-md-4">
+        <div class="card card-stat" style="border-color: #2ecc71;">
+            <div class="stat-number">R$ {{ "%.2f"|format(entradas) }}</div>
+            <div class="stat-label">Entradas</div>
+            <i class="bi bi-arrow-down-circle stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-4 col-md-4">
+        <div class="card card-stat" style="border-color: #e74c3c;">
+            <div class="stat-number">R$ {{ "%.2f"|format(saldo) }}</div>
+            <div class="stat-label">Saldo</div>
+            <i class="bi bi-cash stat-icon"></i>
+        </div>
+    </div>
+</div>
+
+<!-- ===== GRÁFICOS ===== -->
+<div class="row g-4">
+    <!-- Top Clientes -->
+    <div class="col-12 col-md-6">
+        <div class="card p-3 h-100">
+            <h5 class="fw-bold mb-3"><i class="bi bi-trophy"></i> Top Clientes</h5>
+            {% if top_clientes %}
+            <div class="list-group list-group-flush">
+                {% for cliente in top_clientes %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>{{ cliente.nome }}</strong>
+                        <br>
+                        <small class="text-muted">{{ cliente.total_vendas }} vendas</small>
+                    </div>
+                    <div class="text-end">
+                        <span class="badge bg-success rounded-pill">R$ {{ "%.2f"|format(cliente.total_gasto) }}</span>
+                        <br>
+                        <small class="text-muted">{{ cliente.total_produtos }} produtos</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-3">
+                <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+                Nenhuma venda registrada
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Vendas por Dia -->
+    <div class="col-12 col-md-6">
+        <div class="card p-3 h-100">
+            <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill"></i> Últimos 7 Dias</h5>
+            {% if vendas_por_dia %}
+            <div class="list-group list-group-flush">
+                {% for dia in vendas_por_dia %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>
+                        {% if dia.dia is string %}
+                            {{ dia.dia[:10] }}
+                        {% else %}
+                            {{ dia.dia.strftime('%d/%m/%Y') }}
+                        {% endif %}
+                    </span>
+                    <div>
+                        <span class="badge bg-primary rounded-pill me-2">{{ dia.quantidade }} vendas</span>
+                        <span class="badge bg-success rounded-pill">R$ {{ "%.2f"|format(dia.total) }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-3">
+                <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+                Nenhuma venda nos últimos 7 dias
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ===== PRODUÇÃO POR ETAPA (ORGANIZADO) ===== -->
+<div class="row g-4 mt-2">
+    <div class="col-12">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-graph-up"></i> Produção por Etapa</h5>
+            <div class="row g-2">
+                {% for item in producao_por_etapa %}
+                <div class="col-6 col-md-4 col-lg-3">
+                    <div class="d-flex justify-content-between align-items-center p-2 border-bottom">
+                        <span class="fw-medium">{{ item.etapa }}</span>
+                        <span class="badge bg-primary rounded-pill fs-6">{{ item.total }}</span>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-3">Nenhuma produção em andamento</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

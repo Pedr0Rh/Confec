@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-search"></i> Resultado da Busca</h2>
+        <p class="text-muted">Buscando por: "{{ termo }}" - {{ clientes|length }} resultado(s)</p>
+    </div>
+    <a href="{{ url_for('crm') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th class="hide-mobile">Contato</th>
+                        <th>Status</th>
+                        <th class="hide-mobile">Interações</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cliente in clientes %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('cliente_detalhe', id=cliente.id) }}" class="fw-bold text-decoration-none">
+                                {{ cliente.nome }}
+                            </a>
+                        </td>
+                        <td class="hide-mobile">
+                            {% if cliente.telefone %}
+                            <a href="https://wa.me/55{{ cliente.telefone|replace('(', '')|replace(')', '')|replace(' ', '')|replace('-', '')|replace('+', '') }}" 
+                               target="_blank" 
+                               class="whatsapp-link">
+                                <i class="bi bi-whatsapp"></i> {{ cliente.telefone }}
+                            </a>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if cliente.status == 'ativo' %}bg-success{% elif cliente.status == 'potencial' %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ cliente.status|upper }}
+                            </span>
+                        </td>
+                        <td class="hide-mobile">
+                            <span class="badge bg-info">{{ cliente.total_interacoes or 0 }}</span>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('cliente_detalhe', id=cliente.id) }}" class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-4">
+                            <i class="bi bi-search fs-1 d-block mb-2"></i>
+                            <p class="text-muted">Nenhum cliente encontrado com "{{ termo }}"</p>
+                            <a href="{{ url_for('crm') }}" class="btn btn-primary-custom">Voltar</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-clock-history"></i> Movimentações</h2>
+        <p class="text-muted">Histórico completo de movimentações do produto: <strong>{{ produto.nome }}</strong></p>
+        <p class="text-muted">Estoque atual: <strong>{{ produto.estoque_atual }} {{ produto.unidade or 'UN' }}</strong></p>
+    </div>
+    <a href="{{ url_for('estoque') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Voltar
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Tipo</th>
+                        <th>Origem</th>
+                        <th>Quantidade</th>
+                        <th class="hide-mobile">Valor Unit.</th>
+                        <th class="hide-mobile">Valor Total</th>
+                        <th>Descrição</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mov in movimentacoes %}
+                    <tr>
+                        <td>
+                            {% if mov.data_movimentacao is string %}
+                                {{ mov.data_movimentacao[:16] }}
+                            {% else %}
+                                {{ mov.data_movimentacao.strftime('%d/%m/%Y %H:%M') }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if mov.tipo == 'entrada' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ mov.tipo|upper }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ mov.origem|upper }}</span>
+                        </td>
+                        <td class="fw-bold">{{ mov.quantidade }}</td>
+                        <td class="hide-mobile">R$ {{ "%.2f"|format(mov.valor_unitario or 0) }}</td>
+                        <td class="hide-mobile">R$ {{ "%.2f"|format(mov.valor_total or 0) }}</td>
+                        <td>{{ mov.descricao or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            <p class="text-muted">Nenhuma movimentação registrada</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
