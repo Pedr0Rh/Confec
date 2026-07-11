@@ -5,10 +5,10 @@ from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 from functools import wraps
 from datetime import datetime
+import socket
+import urllib.parse
 import time
-import hashlib
 
-# Carregar variáveis de ambiente
 load_dotenv()
 
 app = Flask(__name__)
@@ -17,27 +17,89 @@ app.config['DEBUG'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = False
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 
-# ========== CONEXÃO COM BANCO ==========
+# ========== CONEXÃO COM BANCO - FORÇANDO IPv4 ==========
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 def get_db_connection():
-    """Retorna uma conexão com o banco de dados"""
+    """Retorna uma conexão com o banco de dados - Forçando IPv4"""
     try:
         if not DATABASE_URL:
             print("❌ DATABASE_URL não configurada!")
             return None
         
         print("🔄 Conectando ao banco...")
-        conn = psycopg2.connect(DATABASE_URL)
-        conn.autocommit = False
-        print("✅ Conexão com banco estabelecida com sucesso!")
-        return conn
+        
+        # TENTATIVA 1: Conexão com parâmetros forçando IPv4
+        try:
+            parsed = urllib.parse.urlparse(DATABASE_URL)
+            
+            conn_params = {
+                'dbname': parsed.path[1:],
+                'user': parsed.username,
+                'password': parsed.password,
+                'host': parsed.hostname,
+                'port': parsed.port or 5432,
+                'sslmode': 'require',
+                'connect_timeout': 10,
+                'options': '-c ipv4=1'
+            }
+            
+            conn = psycopg2.connect(**conn_params)
+            conn.autocommit = False
+            print("✅ Conexão com banco estabelecida com sucesso!")
+            return conn
+        except Exception as e1:
+            print(f"⚠️ Tentativa 1 falhou: {e1}")
+            
+            # TENTATIVA 2: Usar hostaddr (IP diretamente)
+            try:
+                host = parsed.hostname
+                ip = socket.gethostbyname(host)
+                print(f"🔄 Resolvido para IPv4: {ip}")
+                
+                conn_params = {
+                    'dbname': parsed.path[1:],
+                    'user': parsed.username,
+                    'password': parsed.password,
+                    'hostaddr': ip,
+                    'port': parsed.port or 5432,
+                    'sslmode': 'require',
+                    'connect_timeout': 10
+                }
+                
+                conn = psycopg2.connect(**conn_params)
+                conn.autocommit = False
+                print("✅ Conexão com banco estabelecida com sucesso (IPv4)!")
+                return conn
+            except Exception as e2:
+                print(f"⚠️ Tentativa 2 falhou: {e2}")
+                
+                # TENTATIVA 3: Usar Transaction Pooler
+                try:
+                    pooler_url = os.getenv('DATABASE_POOLER_URL')
+                    if pooler_url:
+                        parsed_pooler = urllib.parse.urlparse(pooler_url)
+                        conn_params = {
+                            'dbname': parsed_pooler.path[1:],
+                            'user': parsed_pooler.username,
+                            'password': parsed_pooler.password,
+                            'host': parsed_pooler.hostname,
+                            'port': parsed_pooler.port or 6543,
+                            'sslmode': 'require',
+                            'connect_timeout': 10
+                        }
+                        conn = psycopg2.connect(**conn_params)
+                        conn.autocommit = False
+                        print("✅ Conexão com banco via Pooler estabelecida com sucesso!")
+                        return conn
+                except Exception as e3:
+                    print(f"❌ Todas as tentativas falharam: {e3}")
+                    return None
     except Exception as e:
         print(f"❌ Erro ao conectar: {e}")
         return None
 
 def query_one(sql, params=None):
-    """Executa uma query e retorna um resultado"""
     conn = get_db_connection()
     if not conn:
         return None
@@ -54,7 +116,6 @@ def query_one(sql, params=None):
         return None
 
 def query_all(sql, params=None):
-    """Executa uma query e retorna todos os resultados"""
     conn = get_db_connection()
     if not conn:
         return []
@@ -71,7 +132,6 @@ def query_all(sql, params=None):
         return []
 
 def execute_sql(sql, params=None):
-    """Executa INSERT/UPDATE/DELETE"""
     conn = get_db_connection()
     if not conn:
         return False
@@ -89,7 +149,7 @@ def execute_sql(sql, params=None):
         return False
 
 # ==========================================
-# ROTA DE TESTE DA CONEXÃO
+# ROTA DE TESTE
 # ==========================================
 
 @app.route('/testdb')
@@ -103,6 +163,36 @@ def testdb():
             return "❌ Falha na conexão com banco!"
     except Exception as e:
         return f"❌ Erro: {str(e)}"
+
+# ==========================================
+# ROTA DE DIAGNÓSTICO
+# ==========================================
+
+@app.route('/debug')
+def debug():
+    html = "<h1>Diagnóstico</h1>"
+    
+    html += f"<p><strong>DATABASE_URL:</strong> {DATABASE_URL[:50] if DATABASE_URL else 'Não configurada'}...</p>"
+    
+    try:
+        parsed = urllib.parse.urlparse(DATABASE_URL)
+        host = parsed.hostname
+        ip = socket.gethostbyname(host)
+        html += f"<p><strong>Host resolvido:</strong> {host} → {ip}</p>"
+    except Exception as e:
+        html += f"<p><strong>Erro DNS:</strong> {e}</p>"
+    
+    try:
+        conn = get_db_connection()
+        if conn:
+            html += "<p style='color:green'>✅ Conexão com banco OK!</p>"
+            conn.close()
+        else:
+            html += "<p style='color:red'>❌ Falha na conexão!</p>"
+    except Exception as e:
+        html += f"<p style='color:red'>❌ Erro: {e}</p>"
+    
+    return html
 
 # ==========================================
 # LOGIN
@@ -252,7 +342,7 @@ def produto_novo():
         flash('Erro ao cadastrar produto')
     return redirect(url_for('estoque'))
 
-@app.route('/estoque/produto/editar/<int:id>', methods=['POST'])
+@app.route('/estoque/produto/editar/<string:id>', methods=['POST'])
 @login_required
 def produto_editar(id):
     try:
@@ -293,7 +383,7 @@ def produto_editar(id):
         flash('Erro ao atualizar produto')
     return redirect(url_for('estoque'))
 
-@app.route('/estoque/produto/delete/<int:id>', methods=['POST'])
+@app.route('/estoque/produto/delete/<string:id>', methods=['POST'])
 @login_required
 def produto_delete(id):
     if execute_sql("UPDATE produtos SET status = 'inativo' WHERE id = %s", (id,)):
@@ -302,7 +392,7 @@ def produto_delete(id):
         flash('Erro ao desativar produto')
     return redirect(url_for('estoque'))
 
-@app.route('/estoque/movimentacoes/<int:produto_id>')
+@app.route('/estoque/movimentacoes/<string:produto_id>')
 @login_required
 def movimentacoes_produto(produto_id):
     movimentacoes = query_all("""
@@ -320,7 +410,7 @@ def movimentacoes_produto(produto_id):
     
     return render_template('movimentacoes.html', movimentacoes=movimentacoes, produto=produto)
 
-@app.route('/estoque/ajustar/<int:produto_id>', methods=['POST'])
+@app.route('/estoque/ajustar/<string:produto_id>', methods=['POST'])
 @login_required
 def estoque_ajustar(produto_id):
     tipo = request.form['tipo']
@@ -370,10 +460,10 @@ def producao():
         """
         if execute_sql(sql, (
             request.form['pedido'],
-            int(request.form['etapa_id']),
+            request.form['etapa_id'],
             int(request.form['quantidade']),
-            int(request.form.get('colaborador_id')) if request.form.get('colaborador_id') else None,
-            int(request.form.get('produto_id')) if request.form.get('produto_id') else None
+            request.form.get('colaborador_id') or None,
+            request.form.get('produto_id') or None
         )):
             flash('Produção adicionada com sucesso!')
         else:
@@ -394,7 +484,7 @@ def producao():
     
     return render_template('producao.html', etapas=etapas, producoes=producoes, colaboradores=colaboradores, produtos=produtos)
 
-@app.route('/producao/editar/<int:id>', methods=['POST'])
+@app.route('/producao/editar/<string:id>', methods=['POST'])
 @login_required
 def producao_editar(id):
     sql = """
@@ -405,10 +495,10 @@ def producao_editar(id):
     """
     if execute_sql(sql, (
         request.form['pedido'],
-        int(request.form['etapa_id']),
+        request.form['etapa_id'],
         int(request.form['quantidade']),
-        int(request.form.get('colaborador_id')) if request.form.get('colaborador_id') else None,
-        int(request.form.get('produto_id')) if request.form.get('produto_id') else None,
+        request.form.get('colaborador_id') or None,
+        request.form.get('produto_id') or None,
         id
     )):
         flash('Produção atualizada com sucesso!')
@@ -416,7 +506,7 @@ def producao_editar(id):
         flash('Erro ao atualizar produção')
     return redirect(url_for('producao'))
 
-@app.route('/producao/delete/<int:id>', methods=['POST'])
+@app.route('/producao/delete/<string:id>', methods=['POST'])
 @login_required
 def producao_delete(id):
     if execute_sql("DELETE FROM producoes WHERE id = %s", (id,)):
@@ -425,7 +515,7 @@ def producao_delete(id):
         flash('Erro ao excluir produção')
     return redirect(url_for('producao'))
 
-@app.route('/producao/finalizar/<int:id>', methods=['POST'])
+@app.route('/producao/finalizar/<string:id>', methods=['POST'])
 @login_required
 def producao_finalizar(id):
     producao = query_one("SELECT * FROM producoes WHERE id = %s", (id,))
@@ -457,7 +547,7 @@ def producao_finalizar(id):
         flash('Erro ao finalizar produção')
     return redirect(url_for('producao'))
 
-@app.route('/producao/reativar/<int:id>', methods=['POST'])
+@app.route('/producao/reativar/<string:id>', methods=['POST'])
 @login_required
 def producao_reativar(id):
     if execute_sql("UPDATE producoes SET finalizado = false, status = 'Em andamento' WHERE id = %s", (id,)):
@@ -485,7 +575,7 @@ def colaboradores():
     funcoes = ['Costura', 'Elástico', 'Corte', 'Aprontamento', 'Fornecedor', 'Recepção', 'Expedição', 'Outro']
     return render_template('colaboradores.html', colaboradores=colaboradores, funcoes=funcoes)
 
-@app.route('/colaboradores/editar/<int:id>', methods=['POST'])
+@app.route('/colaboradores/editar/<string:id>', methods=['POST'])
 @login_required
 def colaborador_editar(id):
     sql = """
@@ -498,7 +588,7 @@ def colaborador_editar(id):
         flash('Erro ao atualizar colaborador')
     return redirect(url_for('colaboradores'))
 
-@app.route('/colaboradores/delete/<int:id>', methods=['POST'])
+@app.route('/colaboradores/delete/<string:id>', methods=['POST'])
 @login_required
 def colaborador_delete(id):
     em_uso = query_one("SELECT COUNT(*) as total FROM producoes WHERE colaborador_id = %s", (id,))
@@ -524,8 +614,8 @@ def financeiro():
         if not categoria:
             categoria = request.form.get('categoria_selecionada', 'Geral')
         
-        produto_id = int(request.form.get('produto_id')) if request.form.get('produto_id') else None
-        cliente_id = int(request.form.get('cliente_id')) if request.form.get('cliente_id') else None
+        produto_id = request.form.get('produto_id') or None
+        cliente_id = request.form.get('cliente_id') or None
         quantidade = int(request.form.get('quantidade', 0) or 0)
         valor = float(request.form['valor'])
         tipo = request.form['tipo']
@@ -576,7 +666,7 @@ def financeiro():
                          produtos=produtos,
                          clientes=clientes)
 
-@app.route('/financeiro/editar/<int:id>', methods=['POST'])
+@app.route('/financeiro/editar/<string:id>', methods=['POST'])
 @login_required
 def financeiro_editar(id):
     categoria = request.form.get('categoria_personalizada')
@@ -594,9 +684,9 @@ def financeiro_editar(id):
         categoria,
         request.form['descricao'],
         float(request.form['valor']),
-        int(request.form.get('produto_id')) if request.form.get('produto_id') else None,
+        request.form.get('produto_id') or None,
         int(request.form.get('quantidade', 0) or 0),
-        int(request.form.get('cliente_id')) if request.form.get('cliente_id') else None,
+        request.form.get('cliente_id') or None,
         id
     )):
         flash('Transação atualizada com sucesso!')
@@ -604,7 +694,7 @@ def financeiro_editar(id):
         flash('Erro ao atualizar transação')
     return redirect(url_for('financeiro'))
 
-@app.route('/financeiro/delete/<int:id>', methods=['POST'])
+@app.route('/financeiro/delete/<string:id>', methods=['POST'])
 @login_required
 def financeiro_delete(id):
     if execute_sql("DELETE FROM transacoes_financeiras WHERE id = %s", (id,)):
@@ -650,7 +740,7 @@ def crm():
     
     return render_template('crm.html', clientes=clientes, interacoes_recentes=interacoes_recentes, stats=stats)
 
-@app.route('/crm/cliente/<int:id>')
+@app.route('/crm/cliente/<string:id>')
 @login_required
 def cliente_detalhe(id):
     cliente = query_one("""
@@ -684,7 +774,7 @@ def cliente_novo():
         flash('Erro ao cadastrar cliente')
     return redirect(url_for('crm'))
 
-@app.route('/crm/editar/<int:id>', methods=['POST'])
+@app.route('/crm/editar/<string:id>', methods=['POST'])
 @login_required
 def cliente_editar(id):
     sql = """
@@ -703,7 +793,7 @@ def cliente_editar(id):
         flash('Erro ao atualizar cliente')
     return redirect(url_for('cliente_detalhe', id=id))
 
-@app.route('/crm/interacao/<int:cliente_id>', methods=['POST'])
+@app.route('/crm/interacao/<string:cliente_id>', methods=['POST'])
 @login_required
 def cliente_interacao(cliente_id):
     if execute_sql("INSERT INTO interacoes_clientes (cliente_id, tipo, descricao) VALUES (%s, %s, %s)", (cliente_id, request.form['tipo'], request.form['descricao'])):
@@ -730,7 +820,7 @@ def cliente_buscar():
     
     return render_template('crm_busca.html', clientes=clientes, termo=termo)
 
-@app.route('/crm/delete/<int:id>', methods=['POST'])
+@app.route('/crm/delete/<string:id>', methods=['POST'])
 @login_required
 def cliente_delete(id):
     if execute_sql("DELETE FROM clientes WHERE id = %s", (id,)):
@@ -739,34 +829,10 @@ def cliente_delete(id):
         flash('Erro ao excluir cliente')
     return redirect(url_for('crm'))
 
-
-@app.route('/debug-users')
-def debug_users():
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return "❌ Erro de conexão!"
-        
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM usuarios")
-        usuarios = cur.fetchall()
-        cur.close()
-        conn.close()
-        
-        if not usuarios:
-            return "❌ Nenhum usuário encontrado no banco!"
-        
-        html = "<h1>✅ Usuários no banco:</h1><ul>"
-        for u in usuarios:
-            html += f"<li>ID: {u[0]} | Usuário: {u[1]} | Senha: {u[2]} | Nome: {u[3]}</li>"
-        html += "</ul>"
-        html += "<p><strong>Use:</strong> admin / admin123</p>"
-        return html
-    except Exception as e:
-        return f"❌ Erro: {str(e)}"
 # ==========================================
 # RODAR APP
 # ==========================================
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(debug=False, host='0.0.0.0', port=port)
