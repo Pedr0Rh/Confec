@@ -7,7 +7,6 @@ from functools import wraps
 from datetime import datetime
 import socket
 import urllib.parse
-import time
 
 load_dotenv()
 
@@ -17,84 +16,31 @@ app.config['DEBUG'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = False
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 
-# ========== CONEXÃO COM BANCO - FORÇANDO IPv4 ==========
+# ========== CONEXÃO COM BANCO (TRANSACTION POOLER) ==========
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 def get_db_connection():
-    """Retorna uma conexão com o banco de dados - Forçando IPv4"""
+    """Retorna uma conexão com o banco de dados usando Transaction Pooler"""
     try:
         if not DATABASE_URL:
             print("❌ DATABASE_URL não configurada!")
             return None
         
-        print("🔄 Conectando ao banco...")
+        print("🔄 Conectando ao banco via Transaction Pooler...")
         
-        # TENTATIVA 1: Conexão com parâmetros forçando IPv4
-        try:
-            parsed = urllib.parse.urlparse(DATABASE_URL)
-            
-            conn_params = {
-                'dbname': parsed.path[1:],
-                'user': parsed.username,
-                'password': parsed.password,
-                'host': parsed.hostname,
-                'port': parsed.port or 5432,
-                'sslmode': 'require',
-                'connect_timeout': 10,
-                'options': '-c ipv4=1'
-            }
-            
-            conn = psycopg2.connect(**conn_params)
-            conn.autocommit = False
-            print("✅ Conexão com banco estabelecida com sucesso!")
-            return conn
-        except Exception as e1:
-            print(f"⚠️ Tentativa 1 falhou: {e1}")
-            
-            # TENTATIVA 2: Usar hostaddr (IP diretamente)
-            try:
-                host = parsed.hostname
-                ip = socket.gethostbyname(host)
-                print(f"🔄 Resolvido para IPv4: {ip}")
-                
-                conn_params = {
-                    'dbname': parsed.path[1:],
-                    'user': parsed.username,
-                    'password': parsed.password,
-                    'hostaddr': ip,
-                    'port': parsed.port or 5432,
-                    'sslmode': 'require',
-                    'connect_timeout': 10
-                }
-                
-                conn = psycopg2.connect(**conn_params)
-                conn.autocommit = False
-                print("✅ Conexão com banco estabelecida com sucesso (IPv4)!")
-                return conn
-            except Exception as e2:
-                print(f"⚠️ Tentativa 2 falhou: {e2}")
-                
-                # TENTATIVA 3: Usar Transaction Pooler
-                try:
-                    pooler_url = os.getenv('DATABASE_POOLER_URL')
-                    if pooler_url:
-                        parsed_pooler = urllib.parse.urlparse(pooler_url)
-                        conn_params = {
-                            'dbname': parsed_pooler.path[1:],
-                            'user': parsed_pooler.username,
-                            'password': parsed_pooler.password,
-                            'host': parsed_pooler.hostname,
-                            'port': parsed_pooler.port or 6543,
-                            'sslmode': 'require',
-                            'connect_timeout': 10
-                        }
-                        conn = psycopg2.connect(**conn_params)
-                        conn.autocommit = False
-                        print("✅ Conexão com banco via Pooler estabelecida com sucesso!")
-                        return conn
-                except Exception as e3:
-                    print(f"❌ Todas as tentativas falharam: {e3}")
-                    return None
+        # Usar Transaction Pooler do Supabase
+        conn = psycopg2.connect(
+            DATABASE_URL,
+            sslmode='require',
+            connect_timeout=15,
+            keepalives=1,
+            keepalives_idle=5,
+            keepalives_interval=5,
+            keepalives_count=3
+        )
+        conn.autocommit = False
+        print("✅ Conexão com banco estabelecida com sucesso!")
+        return conn
     except Exception as e:
         print(f"❌ Erro ao conectar: {e}")
         return None
@@ -157,8 +103,11 @@ def testdb():
     try:
         conn = get_db_connection()
         if conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.close()
             conn.close()
-            return "✅ Conexão com banco OK!"
+            return "✅ Conexão com banco OK! Query executada com sucesso."
         else:
             return "❌ Falha na conexão com banco!"
     except Exception as e:
@@ -170,15 +119,23 @@ def testdb():
 
 @app.route('/debug')
 def debug():
-    html = "<h1>Diagnóstico</h1>"
+    html = "<h1>🔍 Diagnóstico</h1>"
     
-    html += f"<p><strong>DATABASE_URL:</strong> {DATABASE_URL[:50] if DATABASE_URL else 'Não configurada'}...</p>"
+    html += f"<p><strong>DATABASE_URL:</strong> {DATABASE_URL[:60] if DATABASE_URL else 'Não configurada'}...</p>"
     
     try:
         parsed = urllib.parse.urlparse(DATABASE_URL)
-        host = parsed.hostname
-        ip = socket.gethostbyname(host)
-        html += f"<p><strong>Host resolvido:</strong> {host} → {ip}</p>"
+        html += f"<p><strong>Host:</strong> {parsed.hostname}</p>"
+        html += f"<p><strong>Porta:</strong> {parsed.port}</p>"
+        html += f"<p><strong>Database:</strong> {parsed.path[1:]}</p>"
+        html += f"<p><strong>User:</strong> {parsed.username}</p>"
+    except Exception as e:
+        html += f"<p><strong>Erro ao parsear URL:</strong> {e}</p>"
+    
+    try:
+        if parsed:
+            ip = socket.gethostbyname(parsed.hostname)
+            html += f"<p><strong>IP resolvido:</strong> {ip}</p>"
     except Exception as e:
         html += f"<p><strong>Erro DNS:</strong> {e}</p>"
     
