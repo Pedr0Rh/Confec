@@ -739,6 +739,31 @@ def cliente_delete(id):
         flash('Erro ao excluir cliente')
     return redirect(url_for('crm'))
 
+
+@app.route('/debug-users')
+def debug_users():
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return "❌ Erro de conexão!"
+        
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM usuarios")
+        usuarios = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        if not usuarios:
+            return "❌ Nenhum usuário encontrado no banco!"
+        
+        html = "<h1>✅ Usuários no banco:</h1><ul>"
+        for u in usuarios:
+            html += f"<li>ID: {u[0]} | Usuário: {u[1]} | Senha: {u[2]} | Nome: {u[3]}</li>"
+        html += "</ul>"
+        html += "<p><strong>Use:</strong> admin / admin123</p>"
+        return html
+    except Exception as e:
+        return f"❌ Erro: {str(e)}"
 # ==========================================
 # RODAR APP
 # ==========================================
