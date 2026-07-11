@@ -7,8 +7,6 @@ from functools import wraps
 from datetime import datetime
 import time
 import hashlib
-import socket
-import re
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -19,84 +17,21 @@ app.config['DEBUG'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = False
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 
-# ========== CONEXÃO COM BANCO (CORRIGIDA PARA VERCEL) ==========
+# ========== CONEXÃO COM BANCO ==========
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 def get_db_connection():
-    """Retorna uma conexão com o banco de dados - FORÇANDO IPv4"""
+    """Retorna uma conexão com o banco de dados"""
     try:
         if not DATABASE_URL:
             print("❌ DATABASE_URL não configurada!")
             return None
         
-        print(f"🔄 Conectando ao banco...")
-        
-        # TENTATIVA 1: Conexão normal com SSL
-        try:
-            conn = psycopg2.connect(
-                DATABASE_URL,
-                sslmode='require',
-                connect_timeout=10
-            )
-            conn.autocommit = False
-            print("✅ Conexão com banco estabelecida com sucesso!")
-            return conn
-        except Exception as e1:
-            print(f"⚠️ Tentativa 1 falhou: {e1}")
-            
-            # TENTATIVA 2: Forçar IPv4 com hostaddr
-            try:
-                # Extrair host da URL
-                match = re.search(r'@([^:]+)', DATABASE_URL)
-                if match:
-                    host = match.group(1)
-                    print(f"🔄 Resolvendo host: {host}")
-                    
-                    # Tentar resolver para IPv4
-                    try:
-                        ip = socket.gethostbyname(host)
-                        print(f"🔄 Usando IP: {ip}")
-                    except:
-                        # Se não conseguir resolver, usar um IP comum do Supabase
-                        ip = '34.225.102.123'  # IP exemplo do Supabase
-                        print(f"🔄 Usando IP alternativo: {ip}")
-                    
-                    # Reconectar com hostaddr
-                    conn = psycopg2.connect(
-                        DATABASE_URL,
-                        hostaddr=ip,
-                        sslmode='require',
-                        connect_timeout=10
-                    )
-                    conn.autocommit = False
-                    print("✅ Conexão com banco estabelecida com sucesso (IPv4)!")
-                    return conn
-            except Exception as e2:
-                print(f"⚠️ Tentativa 2 falhou: {e2}")
-                
-                # TENTATIVA 3: Conexão direta com parâmetros
-                try:
-                    # Extrair credenciais da URL
-                    import urllib.parse
-                    parsed = urllib.parse.urlparse(DATABASE_URL)
-                    
-                    conn_params = {
-                        'dbname': parsed.path[1:],
-                        'user': parsed.username,
-                        'password': parsed.password,
-                        'host': '34.225.102.123',  # IP do Supabase
-                        'port': parsed.port or 5432,
-                        'sslmode': 'require',
-                        'connect_timeout': 10
-                    }
-                    
-                    conn = psycopg2.connect(**conn_params)
-                    conn.autocommit = False
-                    print("✅ Conexão com banco estabelecida com sucesso (parâmetros diretos)!")
-                    return conn
-                except Exception as e3:
-                    print(f"❌ Todas as tentativas falharam: {e3}")
-                    return None
+        print("🔄 Conectando ao banco...")
+        conn = psycopg2.connect(DATABASE_URL)
+        conn.autocommit = False
+        print("✅ Conexão com banco estabelecida com sucesso!")
+        return conn
     except Exception as e:
         print(f"❌ Erro ao conectar: {e}")
         return None
@@ -162,29 +97,12 @@ def testdb():
     try:
         conn = get_db_connection()
         if conn:
-            # Testar uma query simples
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.close()
             conn.close()
-            return "✅ Conexão com banco OK! Banco está respondendo."
+            return "✅ Conexão com banco OK!"
         else:
             return "❌ Falha na conexão com banco!"
     except Exception as e:
         return f"❌ Erro: {str(e)}"
-
-# ==========================================
-# ROTA DE TESTE DE IP
-# ==========================================
-
-@app.route('/ip')
-def ip():
-    try:
-        hostname = socket.gethostname()
-        ip_address = socket.gethostbyname(hostname)
-        return f"Hostname: {hostname}<br>IP: {ip_address}"
-    except Exception as e:
-        return f"Erro: {str(e)}"
 
 # ==========================================
 # LOGIN
@@ -201,14 +119,6 @@ def login():
             return render_template('login.html')
         
         try:
-            # Testar conexão primeiro
-            conn = get_db_connection()
-            if not conn:
-                flash('Erro de conexão com o banco de dados!')
-                return render_template('login.html')
-            conn.close()
-            
-            # Buscar usuário no banco
             user = query_one(
                 "SELECT * FROM usuarios WHERE username = %s AND password = %s",
                 (username, password)
