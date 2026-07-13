@@ -653,6 +653,10 @@ def colaborador_delete(id):
 # FINANCEIRO (CORRIGIDO - COM BAIXA NO ESTOQUE)
 # ==========================================
 
+# ==========================================
+# FINANCEIRO (CORRIGIDO - COM BAIXA NO ESTOQUE)
+# ==========================================
+
 @app.route('/financeiro', methods=['GET', 'POST'])
 @login_required
 def financeiro():
@@ -666,6 +670,18 @@ def financeiro():
         quantidade = int(request.form.get('quantidade', 0) or 0)
         valor = float(request.form['valor'])
         tipo = request.form['tipo']
+        
+        # VALIDAÇÕES
+        if tipo == 'entrada' and produto_id and quantidade > 0:
+            # Verificar estoque antes de prosseguir
+            produto_check = query_one("SELECT * FROM produtos WHERE id = %s", (produto_id,))
+            if not produto_check:
+                flash('❌ Produto não encontrado!')
+                return redirect(url_for('financeiro'))
+            
+            if produto_check['estoque_atual'] < quantidade:
+                flash(f'❌ Estoque insuficiente! Disponível: {produto_check["estoque_atual"]}, Solicitado: {quantidade}')
+                return redirect(url_for('financeiro'))
         
         # Inicia transação manual para garantir consistência
         conn = get_db_connection()
@@ -694,8 +710,10 @@ def financeiro():
                 
                 if produto:
                     estoque_atual = produto['estoque_atual']
+                    # SUBTRAI a quantidade vendida
                     novo_estoque = estoque_atual - quantidade
                     
+                    # NUNCA deixa negativo
                     if novo_estoque < 0:
                         novo_estoque = 0
                         flash('⚠️ Aviso: Estoque ficaria negativo. Ajustado para 0.', 'warning')
@@ -715,16 +733,22 @@ def financeiro():
                     """, (produto_id, quantidade, f'Venda - {request.form["descricao"]}', transacao_id))
                     
                     flash(f'✅ Venda registrada! Estoque: {estoque_atual} → {novo_estoque} {produto["unidade"] or "UN"}', 'success')
+                else:
+                    flash('❌ Produto não encontrado para baixa de estoque!')
             
             conn.commit()
             cur.close()
             conn.close()
-            flash('✅ Transação registrada com sucesso!')
+            
+            if tipo != 'entrada' or not produto_id or quantidade == 0:
+                flash('✅ Transação registrada com sucesso!')
             
         except Exception as e:
             conn.rollback()
             conn.close()
             print(f"❌ Erro ao registrar transação: {e}")
+            import traceback
+            traceback.print_exc()
             flash(f'❌ Erro ao registrar transação: {str(e)}')
         
         return redirect(url_for('financeiro'))
@@ -764,6 +788,179 @@ def financeiro():
                          categorias_existentes=lista_categorias,
                          produtos=produtos,
                          clientes=clientes)
+
+@app.route('/financeiro/editar/<string:id>', methods=['POST'])
+@login_required
+def financeiro_editar(id):
+    # Buscar transação original
+    transacao_original = query_one("SELECT * FROM transacoes_financeiras WHERE id = %s", (id,))
+    if not transacao_original:
+        flash('Transação não encontrada')
+        return redirect(url_for('financeiro'))
+    
+    categoria = request.form.get('categoria_personalizada')
+    if not categoria:
+        categoria = request.form.get('categoria_selecionada', 'Geral')
+    
+    novo_tipo = request.form['tipo']
+    novo_produto_id = request.form.get('produto_id') or None
+    nova_quantidade = int(request.form.get('quantidade', 0) or 0)
+    novo_valor = float(request.form['valor'])
+    
+    # VALIDAÇÕES
+    if novo_tipo == 'entrada' and novo_produto_id and nova_quantidade > 0:
+        produto_check = query_one("SELECT * FROM produtos WHERE id = %s", (novo_produto_id,))
+        if not produto_check:
+            flash('❌ Produto não encontrado!')
+            return redirect(url_for('financeiro'))
+        
+        # Se for o mesmo produto, precisamos considerar o estoque original que foi devolvido
+        if transacao_original['produto_id'] == novo_produto_id and transacao_original['tipo'] == 'entrada':
+            # O estoque foi devolvido, então podemos subtrair novamente
+            estoque_atual = produto_check['estoque_atual'] - transacao_original['quantidade']
+        else:
+            estoque_atual = produto_check['estoque_atual']
+        
+        if estoque_atual < nova_quantidade:
+            flash(f'❌ Estoque insuficiente! Disponível: {estoque_atual}, Solicitado: {nova_quantidade}')
+            return redirect(url_for('financeiro'))
+    
+    conn = get_db_connection()
+    if not conn:
+        flash('Erro de conexão com banco de dados')
+        return redirect(url_for('financeiro'))
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 1. Reverter alterações da transação original no estoque (se houver)
+        if transacao_original['tipo'] == 'entrada' and transacao_original['produto_id'] and transacao_original['quantidade'] > 0:
+            # Devolver ao estoque (entrada)
+            cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (transacao_original['produto_id'],))
+            produto_original = cur.fetchone()
+            if produto_original:
+                estoque_atual = produto_original['estoque_atual']
+                # ADICIONA de volta ao estoque
+                novo_estoque = estoque_atual + transacao_original['quantidade']
+                cur.execute("""
+                    UPDATE produtos SET estoque_atual = %s, updated_at = NOW() 
+                    WHERE id = %s
+                """, (novo_estoque, transacao_original['produto_id']))
+                print(f"🔄 Revertido: {estoque_atual} + {transacao_original['quantidade']} = {novo_estoque}")
+        
+        # 2. Atualizar a transação
+        sql_update = """
+            UPDATE transacoes_financeiras SET 
+                tipo = %s, categoria = %s, descricao = %s, 
+                valor = %s, produto_id = %s, quantidade = %s, cliente_id = %s
+            WHERE id = %s
+        """
+        cur.execute(sql_update, (
+            novo_tipo,
+            categoria,
+            request.form['descricao'],
+            novo_valor,
+            novo_produto_id,
+            nova_quantidade,
+            request.form.get('cliente_id') or None,
+            id
+        ))
+        
+        # 3. Aplicar nova alteração no estoque (se for venda)
+        if novo_tipo == 'entrada' and novo_produto_id and nova_quantidade > 0:
+            cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (novo_produto_id,))
+            produto_novo = cur.fetchone()
+            if produto_novo:
+                estoque_atual = produto_novo['estoque_atual']
+                # SUBTRAI a quantidade vendida
+                novo_estoque = estoque_atual - nova_quantidade
+                if novo_estoque < 0:
+                    novo_estoque = 0
+                    flash('⚠️ Aviso: Estoque ficaria negativo. Ajustado para 0.', 'warning')
+                
+                cur.execute("""
+                    UPDATE produtos SET estoque_atual = %s, updated_at = NOW() 
+                    WHERE id = %s
+                """, (novo_estoque, novo_produto_id))
+                print(f"✅ Nova venda: {estoque_atual} - {nova_quantidade} = {novo_estoque}")
+                
+                # Registrar movimentação
+                cur.execute("""
+                    INSERT INTO movimentacoes_estoque 
+                    (produto_id, tipo, origem, quantidade, descricao, referencia_id) 
+                    VALUES (%s, 'saida', 'venda', %s, %s, %s)
+                """, (novo_produto_id, nova_quantidade, f'Venda editada - {request.form["descricao"]}', id))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        flash('✅ Transação atualizada com sucesso!')
+        
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        print(f"❌ Erro ao atualizar transação: {e}")
+        import traceback
+        traceback.print_exc()
+        flash(f'❌ Erro ao atualizar transação: {str(e)}')
+    
+    return redirect(url_for('financeiro'))
+
+@app.route('/financeiro/delete/<string:id>', methods=['POST'])
+@login_required
+def financeiro_delete(id):
+    # Buscar a transação antes de excluir
+    transacao = query_one("SELECT * FROM transacoes_financeiras WHERE id = %s", (id,))
+    if not transacao:
+        flash('Transação não encontrada')
+        return redirect(url_for('financeiro'))
+    
+    conn = get_db_connection()
+    if not conn:
+        flash('Erro de conexão com banco de dados')
+        return redirect(url_for('financeiro'))
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Se for uma venda (entrada), devolver ao estoque
+        if transacao['tipo'] == 'entrada' and transacao['produto_id'] and transacao['quantidade'] > 0:
+            cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (transacao['produto_id'],))
+            produto = cur.fetchone()
+            if produto:
+                estoque_atual = produto['estoque_atual']
+                # ADICIONA de volta ao estoque
+                novo_estoque = estoque_atual + transacao['quantidade']
+                cur.execute("""
+                    UPDATE produtos SET estoque_atual = %s, updated_at = NOW() 
+                    WHERE id = %s
+                """, (novo_estoque, transacao['produto_id']))
+                print(f"🗑️ Excluído: {estoque_atual} + {transacao['quantidade']} = {novo_estoque}")
+                
+                # Registrar movimentação de reversão
+                cur.execute("""
+                    INSERT INTO movimentacoes_estoque 
+                    (produto_id, tipo, origem, quantidade, descricao, referencia_id) 
+                    VALUES (%s, 'entrada', 'cancelamento', %s, %s, %s)
+                """, (transacao['produto_id'], transacao['quantidade'], f'Cancelamento de venda - {transacao["descricao"]}', id))
+        
+        # Excluir a transação
+        cur.execute("DELETE FROM transacoes_financeiras WHERE id = %s", (id,))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        flash('✅ Transação excluída com sucesso! Estoque revertido.')
+        
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        print(f"❌ Erro ao excluir transação: {e}")
+        import traceback
+        traceback.print_exc()
+        flash(f'❌ Erro ao excluir transação: {str(e)}')
+    
+    return redirect(url_for('financeiro'))
 
 @app.route('/financeiro/editar/<string:id>', methods=['POST'])
 @login_required
