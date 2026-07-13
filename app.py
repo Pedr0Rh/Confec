@@ -35,7 +35,7 @@ def get_db_connection():
 
         print("🔄 Conectando ao banco...")
 
-        # TENTATIVA 1: Conexão com parâmetros forçando IPv4
+        # Tentativa com parâmetros
         try:
             parsed = urllib.parse.urlparse(DATABASE_URL)
             
@@ -57,7 +57,7 @@ def get_db_connection():
         except Exception as e1:
             print(f"⚠️ Tentativa 1 falhou: {e1}")
             
-            # TENTATIVA 2: Usar hostaddr (IP diretamente)
+            # Tentativa com hostaddr
             try:
                 parsed = urllib.parse.urlparse(DATABASE_URL)
                 host = parsed.hostname
@@ -81,7 +81,7 @@ def get_db_connection():
             except Exception as e2:
                 print(f"⚠️ Tentativa 2 falhou: {e2}")
                 
-                # TENTATIVA 3: Usar URL diretamente
+                # Tentativa com URL direta
                 try:
                     conn = psycopg2.connect(
                         DATABASE_URL,
@@ -206,11 +206,11 @@ def debug():
                 html += f"<p><strong>Host resolvido:</strong> {host} → {ip}</p>"
             except:
                 html += f"<p><strong>Host:</strong> {host}</p>"
-            html += f"<p><strong>Porta:</strong> {parsed.port}</p>
-            html += f"<p><strong>Database:</strong> {parsed.path[1:]}</p>
-            html += f"<p><strong>User:</strong> {parsed.username}</p>
+            html += f"<p><strong>Porta:</strong> {parsed.port}</p>"
+            html += f"<p><strong>Database:</strong> {parsed.path[1:]}</p>"
+            html += f"<p><strong>User:</strong> {parsed.username}</p>"
         except Exception as e:
-            html += f"<p><strong>Erro ao parsear URL:</strong> {e}</p>
+            html += f"<p><strong>Erro ao parsear URL:</strong> {e}</p>"
     
     try:
         conn = get_db_connection()
