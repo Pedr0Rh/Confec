@@ -11,6 +11,16 @@ import traceback
 import io
 
 # ==========================================
+# CONFIGURAR FUSO HORÁRIO PARA BRASIL (UTC-3)
+# ==========================================
+os.environ['TZ'] = 'America/Sao_Paulo'
+try:
+    import time
+    time.tzset()
+except:
+    pass
+
+# ==========================================
 # IMPORTAÇÕES PARA PDF (APENAS REPORTLAB)
 # ==========================================
 
@@ -42,6 +52,7 @@ print("=" * 60)
 print("🚀 INICIANDO APLICAÇÃO")
 print(f"📊 DATABASE_URL: {'✅ Configurada' if DATABASE_URL else '❌ NÃO CONFIGURADA'}")
 print(f"🔑 SECRET_KEY: {'✅ Configurada' if os.getenv('SECRET_KEY') else '⚠️ Usando chave padrão'}")
+print(f"🕐 FUSO HORÁRIO: {time.tzname if hasattr(time, 'tzname') else 'America/Sao_Paulo'}")
 print("=" * 60)
 
 def get_db_connection():
@@ -1569,8 +1580,7 @@ def crm():
             COUNT(CASE WHEN status = 'inativo' THEN 1 END) as inativos,
             COUNT(i.id) as total_interacoes
         FROM clientes c
-        LEFT JOIN interacoes_clientes i ON c.id = i.cliente_id
-    """)
+        LEFT JOIN interacoes_clientes i ON c.id = i.cliente_id    """)
 
     return render_template('crm.html', clientes=clientes, interacoes_recentes=interacoes_recentes, stats=stats)
 
