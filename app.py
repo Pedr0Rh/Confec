@@ -200,28 +200,23 @@ def gerar_sku(nome_produto):
     return f'{sku_base}-001'
 
 # ==========================================
-# FUNÇÃO PARA GERAR NÚMERO DO PEDIDO (COM DATA)
+# FUNÇÃO PARA GERAR NÚMERO DO PEDIDO (APENAS PRODUÇÃO)
 # ==========================================
 
 def gerar_numero_pedido():
-    """Gera um número de pedido sequencial com data no formato PED-YYYY-MM-DD-XXXX"""
+    """Gera um número de pedido sequencial com data no formato PED-YYYY-MM-DD-XXXX (apenas para produção)"""
     agora = datetime.now()
     ano = agora.year
     mes = f"{agora.month:02d}"
     dia = f"{agora.day:02d}"
     prefixo = f'PED-{ano}-{mes}-{dia}'
     
-    # Buscar o último pedido do dia
+    # Buscar o último pedido do dia APENAS na tabela producoes
     ultimo = query_one("""
-        SELECT numero_pedido FROM (
-            SELECT numero_pedido FROM transacoes_financeiras 
-            WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
-            UNION ALL
-            SELECT numero_pedido FROM producoes 
-            WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
-        ) AS todos_pedidos
+        SELECT numero_pedido FROM producoes 
+        WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
         ORDER BY numero_pedido DESC LIMIT 1
-    """, (f'{prefixo}-%', f'{prefixo}-%'))
+    """, (f'{prefixo}-%',))
     
     if ultimo and ultimo['numero_pedido']:
         partes = ultimo['numero_pedido'].split('-')
@@ -235,20 +230,16 @@ def gerar_numero_pedido():
     return f'{prefixo}-0001'
 
 # ==========================================
-# FUNÇÃO PARA REORGANIZAR NÚMEROS DE PEDIDO (COM DATA)
+# FUNÇÃO PARA REORGANIZAR NÚMEROS DE PEDIDO (APENAS PRODUÇÃO)
 # ==========================================
 
 def reorganizar_numeros_pedido():
-    """Reorganiza os números de pedido por data para eliminar lacunas"""
+    """Reorganiza os números de pedido por data para eliminar lacunas (apenas produção)"""
     
-    # Buscar todos os pedidos ordenados por data
     pedidos = query_all("""
-        SELECT id, numero_pedido, data, 'transacao' as tipo FROM transacoes_financeiras 
+        SELECT id, numero_pedido, data_entrada as data FROM producoes 
         WHERE numero_pedido IS NOT NULL
-        UNION ALL
-        SELECT id, numero_pedido, data_entrada as data, 'producao' as tipo FROM producoes 
-        WHERE numero_pedido IS NOT NULL
-        ORDER BY data ASC
+        ORDER BY data_entrada ASC
     """)
     
     if not pedidos:
@@ -261,7 +252,6 @@ def reorganizar_numeros_pedido():
     try:
         cur = conn.cursor()
         
-        # Agrupar por data
         pedidos_por_data = {}
         for pedido in pedidos:
             data_str = pedido['data'].strftime('%Y-%m-%d') if pedido['data'] else datetime.now().strftime('%Y-%m-%d')
@@ -269,7 +259,6 @@ def reorganizar_numeros_pedido():
                 pedidos_por_data[data_str] = []
             pedidos_por_data[data_str].append(pedido)
         
-        # Reorganizar cada grupo por data
         for data_str, lista in pedidos_por_data.items():
             ano, mes, dia = data_str.split('-')
             prefixo = f'PED-{ano}-{mes}-{dia}'
@@ -279,18 +268,11 @@ def reorganizar_numeros_pedido():
                 novo_pedido = f'{prefixo}-{contador:04d}'
                 contador += 1
                 
-                if pedido['tipo'] == 'transacao':
-                    cur.execute("""
-                        UPDATE transacoes_financeiras 
-                        SET numero_pedido = %s 
-                        WHERE id = %s
-                    """, (novo_pedido, pedido['id']))
-                else:
-                    cur.execute("""
-                        UPDATE producoes 
-                        SET numero_pedido = %s 
-                        WHERE id = %s
-                    """, (novo_pedido, pedido['id']))
+                cur.execute("""
+                    UPDATE producoes 
+                    SET numero_pedido = %s 
+                    WHERE id = %s
+                """, (novo_pedido, pedido['id']))
         
         conn.commit()
         cur.close()
@@ -301,8 +283,9 @@ def reorganizar_numeros_pedido():
         conn.rollback()
         conn.close()
         print(f"❌ Erro ao reorganizar números: {e}")
+
 # ==========================================
-# FUNÇÃO PARA GERAR RELATÓRIO PDF (APENAS REPORTLAB)
+# FUNÇÃO PARA GERAR RELATÓRIO PDF
 # ==========================================
 
 def gerar_relatorio_pdf():
@@ -380,7 +363,7 @@ def gerar_relatorio_pdf():
         
         'ultimas_vendas': query_all("""
             SELECT 
-                t.numero_pedido,
+                t.id,
                 t.data,
                 t.valor,
                 t.quantidade,
@@ -469,7 +452,7 @@ def gerar_relatorio_pdf():
     story.append(resumo_table)
     story.append(Spacer(1, 6*mm))
     
-    # 2. GRÁFICO DE VENDAS POR DIA (REPORTLAB)
+    # 2. GRÁFICO DE VENDAS POR DIA
     story.append(Paragraph("2. VENDAS POR DIA (ÚLTIMOS 30 DIAS)", styles['Heading2']))
     story.append(Spacer(1, 3*mm))
     
@@ -608,10 +591,9 @@ def gerar_relatorio_pdf():
     
     ultimas_vendas = dados['ultimas_vendas']
     if ultimas_vendas:
-        venda_data = [['Pedido', 'Data', 'Cliente', 'Produto', 'Qtd', 'Valor']]
+        venda_data = [['Data', 'Cliente', 'Produto', 'Qtd', 'Valor']]
         for v in ultimas_vendas:
             venda_data.append([
-                v['numero_pedido'] or '-',
                 v['data'].strftime('%d/%m/%Y') if v['data'] else '-',
                 v['cliente_nome'][:20] if v['cliente_nome'] else '-',
                 v['produto_nome'][:20] if v['produto_nome'] else '-',
@@ -619,7 +601,7 @@ def gerar_relatorio_pdf():
                 f'R$ {v["valor"]:.2f}'
             ])
         
-        venda_table = Table(venda_data, colWidths=[30*mm, 30*mm, 35*mm, 35*mm, 20*mm, 30*mm])
+        venda_table = Table(venda_data, colWidths=[35*mm, 40*mm, 40*mm, 20*mm, 30*mm])
         venda_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 8),
@@ -1178,7 +1160,7 @@ def colaborador_delete(id):
     return redirect(url_for('colaboradores'))
 
 # ==========================================
-# FINANCEIRO
+# FINANCEIRO (SEM NUMERO_PEDIDO)
 # ==========================================
 
 @app.route('/financeiro', methods=['GET', 'POST'])
@@ -1194,8 +1176,6 @@ def financeiro():
         quantidade = int(request.form.get('quantidade', 0) or 0)
         valor = float(request.form['valor'])
         tipo = request.form['tipo']
-        
-        numero_pedido = gerar_numero_pedido() if tipo == 'entrada' else None
 
         if tipo == 'entrada' and produto_id and quantidade > 0:
             produto_check = query_one("SELECT * FROM produtos WHERE id = %s", (produto_id,))
@@ -1217,11 +1197,11 @@ def financeiro():
 
             sql_transacao = """
                 INSERT INTO transacoes_financeiras 
-                (tipo, categoria, descricao, valor, produto_id, quantidade, cliente_id, numero_pedido) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (tipo, categoria, descricao, valor, produto_id, quantidade, cliente_id) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
-            cur.execute(sql_transacao, (tipo, categoria, request.form['descricao'], valor, produto_id, quantidade, cliente_id, numero_pedido))
+            cur.execute(sql_transacao, (tipo, categoria, request.form['descricao'], valor, produto_id, quantidade, cliente_id))
             transacao_id = cur.fetchone()['id']
 
             if tipo == 'entrada' and produto_id and quantidade > 0:
@@ -1246,16 +1226,16 @@ def financeiro():
                         INSERT INTO movimentacoes_estoque 
                         (produto_id, tipo, origem, quantidade, descricao, referencia_id) 
                         VALUES (%s, 'saida', 'venda', %s, %s, %s)
-                    """, (produto_id, quantidade, f'Venda - {request.form["descricao"]} - Pedido: {numero_pedido}', transacao_id))
+                    """, (produto_id, quantidade, f'Venda - {request.form["descricao"]}', transacao_id))
 
-                    flash(f'✅ Venda registrada! Pedido: {numero_pedido} | Estoque: {estoque_atual} → {novo_estoque} {produto["unidade"] or "UN"}', 'success')
+                    flash(f'✅ Venda registrada! Estoque: {estoque_atual} → {novo_estoque} {produto["unidade"] or "UN"}', 'success')
 
             conn.commit()
             cur.close()
             conn.close()
 
             if tipo != 'entrada' or not produto_id or quantidade == 0:
-                flash(f'✅ Transação registrada com sucesso!{" Pedido: " + numero_pedido if numero_pedido else ""}')
+                flash('✅ Transação registrada com sucesso!')
 
         except Exception as e:
             conn.rollback()
@@ -1428,9 +1408,7 @@ def financeiro_delete(id):
         cur.close()
         conn.close()
         
-        reorganizar_numeros_pedido()
-        
-        flash('✅ Transação excluída com sucesso! Estoque revertido e números reorganizados.')
+        flash('✅ Transação excluída com sucesso! Estoque revertido.')
 
     except Exception as e:
         conn.rollback()
@@ -1500,7 +1478,9 @@ def relatorio():
 
     ultimas_vendas = query_all("""
         SELECT 
-            t.*,
+            t.data,
+            t.valor,
+            t.quantidade,
             p.nome as produto_nome,
             c.nome as cliente_nome
         FROM transacoes_financeiras t
