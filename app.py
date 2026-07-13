@@ -4,14 +4,14 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timedelta
 import socket
 import urllib.parse
 import traceback
 import io
 
 # ==========================================
-# CONFIGURAR FUSO HORÁRIO PARA BRASIL (UTC-3)
+# CONFIGURAR FUSO HORÁRIO PARA BRASIL (UTC-3) - DEFINITIVO
 # ==========================================
 os.environ['TZ'] = 'America/Sao_Paulo'
 try:
@@ -19,6 +19,29 @@ try:
     time.tzset()
 except:
     pass
+
+# ==========================================
+# FUNÇÃO PARA OBTER DATA/HORA ATUAL EM BRASÍLIA
+# ==========================================
+
+def agora_brasil():
+    """Retorna a data/hora atual no fuso horário de Brasília (UTC-3)"""
+    return datetime.now()
+
+def ajustar_data_brasil(data_utc):
+    """Converte uma data UTC para horário de Brasília (UTC-3)"""
+    if not data_utc:
+        return data_utc
+    
+    if isinstance(data_utc, str):
+        try:
+            data_utc = data_utc.replace('Z', '+00:00')
+            data_utc = datetime.fromisoformat(data_utc)
+        except:
+            return data_utc
+    
+    # Subtrair 3 horas (UTC-3)
+    return data_utc - timedelta(hours=3)
 
 # ==========================================
 # IMPORTAÇÕES PARA PDF (APENAS REPORTLAB)
@@ -52,7 +75,7 @@ print("=" * 60)
 print("🚀 INICIANDO APLICAÇÃO")
 print(f"📊 DATABASE_URL: {'✅ Configurada' if DATABASE_URL else '❌ NÃO CONFIGURADA'}")
 print(f"🔑 SECRET_KEY: {'✅ Configurada' if os.getenv('SECRET_KEY') else '⚠️ Usando chave padrão'}")
-print(f"🕐 FUSO HORÁRIO: {time.tzname if hasattr(time, 'tzname') else 'America/Sao_Paulo'}")
+print(f"🕐 FUSO HORÁRIO: America/Sao_Paulo (UTC-3)")
 print("=" * 60)
 
 def get_db_connection():
@@ -139,6 +162,12 @@ def query_one(sql, params=None):
         result = cur.fetchone()
         cur.close()
         conn.close()
+        
+        # Ajustar datas para Brasília
+        if result:
+            for key in result.keys():
+                if 'data' in key.lower() and isinstance(result[key], datetime):
+                    result[key] = ajustar_data_brasil(result[key])
         return result
     except Exception as e:
         print(f"Erro query_one: {e}")
@@ -153,10 +182,16 @@ def query_all(sql, params=None):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute(sql, params or ())
-        result = cur.fetchall()
+        results = cur.fetchall()
         cur.close()
         conn.close()
-        return result
+        
+        # Ajustar datas para Brasília em todos os resultados
+        for result in results:
+            for key in result.keys():
+                if 'data' in key.lower() and isinstance(result[key], datetime):
+                    result[key] = ajustar_data_brasil(result[key])
+        return results
     except Exception as e:
         print(f"Erro query_all: {e}")
         traceback.print_exc()
@@ -180,6 +215,29 @@ def execute_sql(sql, params=None):
         conn.rollback()
         conn.close()
         return False
+
+# ==========================================
+# FUNÇÃO PARA FORMATAR DATA/HORA BRASIL
+# ==========================================
+
+def formatar_data_brasil(data, formato='%d/%m/%Y %H:%M'):
+    """Formata uma data para o padrão brasileiro"""
+    if not data:
+        return '-'
+    
+    # Se for string, tentar converter
+    if isinstance(data, str):
+        try:
+            data = datetime.fromisoformat(data.replace('Z', '+00:00'))
+        except:
+            return data
+    
+    # Se for datetime, ajustar para Brasília
+    if isinstance(data, datetime):
+        data = ajustar_data_brasil(data)
+        return data.strftime(formato)
+    
+    return str(data)
 
 # ==========================================
 # FUNÇÃO PARA GERAR SKU AUTOMÁTICO
@@ -216,13 +274,12 @@ def gerar_sku(nome_produto):
 
 def gerar_numero_pedido():
     """Gera um número de pedido sequencial com data no formato PED-YYYY-MM-DD-XXXX (apenas para produção)"""
-    agora = datetime.now()
+    agora = agora_brasil()
     ano = agora.year
     mes = f"{agora.month:02d}"
     dia = f"{agora.day:02d}"
     prefixo = f'PED-{ano}-{mes}-{dia}'
     
-    # Buscar o último pedido do dia APENAS na tabela producoes
     ultimo = query_one("""
         SELECT numero_pedido FROM producoes 
         WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
@@ -265,7 +322,7 @@ def reorganizar_numeros_pedido():
         
         pedidos_por_data = {}
         for pedido in pedidos:
-            data_str = pedido['data'].strftime('%Y-%m-%d') if pedido['data'] else datetime.now().strftime('%Y-%m-%d')
+            data_str = pedido['data'].strftime('%Y-%m-%d') if pedido['data'] else agora_brasil().strftime('%Y-%m-%d')
             if data_str not in pedidos_por_data:
                 pedidos_por_data[data_str] = []
             pedidos_por_data[data_str].append(pedido)
@@ -421,7 +478,7 @@ def gerar_relatorio_pdf():
         spaceAfter=6
     )
     story.append(Paragraph("📊 RELATÓRIO COMPLETO", title_style))
-    story.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+    story.append(Paragraph(f"Gerado em: {agora_brasil().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
     story.append(Spacer(1, 6*mm))
     
     # 1. RESUMO GERAL
@@ -605,7 +662,7 @@ def gerar_relatorio_pdf():
         venda_data = [['Data', 'Cliente', 'Produto', 'Qtd', 'Valor']]
         for v in ultimas_vendas:
             venda_data.append([
-                v['data'].strftime('%d/%m/%Y') if v['data'] else '-',
+                v['data'].strftime('%d/%m/%Y %H:%M') if v['data'] else '-',
                 v['cliente_nome'][:20] if v['cliente_nome'] else '-',
                 v['produto_nome'][:20] if v['produto_nome'] else '-',
                 str(v['quantidade'] or 0),
@@ -665,7 +722,7 @@ def gerar_relatorio_pdf():
         story.append(Paragraph("Nenhuma movimentação registrada.", styles['Normal']))
     
     story.append(Spacer(1, 8*mm))
-    story.append(Paragraph(f"Relatório gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')} - Sistema de Gestão", 
+    story.append(Paragraph(f"Relatório gerado em {agora_brasil().strftime('%d/%m/%Y às %H:%M')} - Sistema de Gestão", 
                           styles['Normal']))
     
     doc.build(story)
@@ -1541,7 +1598,7 @@ def relatorio_pdf():
         return send_file(
             io.BytesIO(pdf_data),
             as_attachment=True,
-            download_name=f'relatorio_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf',
+            download_name=f'relatorio_{agora_brasil().strftime("%Y%m%d_%H%M")}.pdf',
             mimetype='application/pdf'
         )
     except Exception as e:
@@ -1580,7 +1637,8 @@ def crm():
             COUNT(CASE WHEN status = 'inativo' THEN 1 END) as inativos,
             COUNT(i.id) as total_interacoes
         FROM clientes c
-        LEFT JOIN interacoes_clientes i ON c.id = i.cliente_id    """)
+        LEFT JOIN interacoes_clientes i ON c.id = i.cliente_id
+    """)
 
     return render_template('crm.html', clientes=clientes, interacoes_recentes=interacoes_recentes, stats=stats)
 
