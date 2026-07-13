@@ -1,77 +1,456 @@
-<!-- Tabela de transações - remova a coluna Pedido -->
-<thead>
-    <tr>
-        <th>Data</th>
-        <th>Descrição</th>
-        <th>Cliente</th>
-        <th>Produto</th>
-        <th>Qtd</th>
-        <th>Categoria</th>
-        <th>Tipo</th>
-        <th>Valor</th>
-        <th>Ações</th>
-    </tr>
-</thead>
-<tbody>
-    {% for transacao in transacoes %}
-    <tr>
-        <td>
-            {% if transacao.data is string %}
-                {{ transacao.data[:16] }}
-            {% else %}
-                {{ transacao.data.strftime('%d/%m/%Y %H:%M') }}
-            {% endif %}
-        </td>
-        <td>{{ transacao.descricao }}</td>
-        <td>
-            {% if transacao.cliente_nome %}
-                <span class="badge bg-info">{{ transacao.cliente_nome }}</span>
-            {% else %}
-                <span class="text-muted">-</span>
-            {% endif %}
-        </td>
-        <td>
-            {% if transacao.produto_nome %}
-                <span class="badge bg-secondary">{{ transacao.produto_nome }}</span>
-            {% else %}
-                <span class="text-muted">-</span>
-            {% endif %}
-        </td>
-        <td>{{ transacao.quantidade or 0 }}</td>
-        <td>
-            <span class="badge bg-secondary">{{ transacao.categoria or 'Geral' }}</span>
-        </td>
-        <td>
-            <span class="badge {% if transacao.tipo == 'entrada' %}bg-success{% else %}bg-danger{% endif %}">
-                {% if transacao.tipo == 'entrada' %}
-                    VENDA ⬇️
-                {% else %}
-                    DESPESA
-                {% endif %}
-            </span>
-        </td>
-        <td class="{% if transacao.tipo == 'entrada' %}text-success{% else %}text-danger{% endif %} fw-bold">
-            R$ {{ "%.2f"|format(transacao.valor) }}
-        </td>
-        <td>
-            <div class="btn-group btn-group-sm">
-                <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarTransacao{{ transacao.id }}" title="Editar">
-                    <i class="bi bi-pencil"></i>
-                </button>
-                <form method="POST" action="{{ url_for('financeiro_delete', id=transacao.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir esta transação? O estoque será revertido.')">
-                    <button type="submit" class="btn btn-outline-danger" title="Excluir">
-                        <i class="bi bi-trash"></i>
-                    </button>
-                </form>
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-coin"></i> Fluxo Financeiro</h2>
+        <p class="text-muted">Controle de entradas e saídas com integração ao estoque</p>
+    </div>
+    <button class="btn btn-primary-custom" data-bs-toggle="modal" data-bs-target="#novaTransacao">
+        <i class="bi bi-plus-circle"></i> Nova Transação
+    </button>
+</div>
+
+<!-- ===== CARDS RESUMO ===== -->
+<div class="row g-4 mb-4">
+    <div class="col-6 col-md-4">
+        <div class="financeiro-card entrada">
+            <div class="text-muted small">ENTRADAS (VENDAS)</div>
+            <div class="valor entrada">R$ {{ "%.2f"|format(entradas or 0) }}</div>
+            <small class="text-muted">⬇️ Estoque diminui</small>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="financeiro-card saida">
+            <div class="text-muted small">SAÍDAS (DESPESAS)</div>
+            <div class="valor saida">R$ {{ "%.2f"|format(saidas or 0) }}</div>
+            <small class="text-muted">⬛ Não afeta estoque</small>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="financeiro-card saldo">
+            <div class="text-muted small">SALDO</div>
+            <div class="valor saldo">R$ {{ "%.2f"|format(saldo or 0) }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== TABELA DE TRANSAÇÕES ===== -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Cliente</th>
+                        <th>Produto</th>
+                        <th>Qtd</th>
+                        <th>Categoria</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for transacao in transacoes %}
+                    <tr>
+                        <td>
+                            {% if transacao.data is string %}
+                                {{ transacao.data[:16] }}
+                            {% else %}
+                                {{ transacao.data.strftime('%d/%m/%Y %H:%M') }}
+                            {% endif %}
+                        </td>
+                        <td>{{ transacao.descricao }}</td>
+                        <td>
+                            {% if transacao.cliente_nome %}
+                                <span class="badge bg-info">{{ transacao.cliente_nome }}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if transacao.produto_nome %}
+                                <span class="badge bg-secondary">{{ transacao.produto_nome }}</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ transacao.quantidade or 0 }}</td>
+                        <td>
+                            <span class="badge bg-secondary">{{ transacao.categoria or 'Geral' }}</span>
+                        </td>
+                        <td>
+                            <span class="badge {% if transacao.tipo == 'entrada' %}bg-success{% else %}bg-danger{% endif %}">
+                                {% if transacao.tipo == 'entrada' %}
+                                    VENDA ⬇️
+                                {% else %}
+                                    DESPESA
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td class="{% if transacao.tipo == 'entrada' %}text-success{% else %}text-danger{% endif %} fw-bold">
+                            R$ {{ "%.2f"|format(transacao.valor) }}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarTransacao{{ transacao.id }}" title="Editar">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <form method="POST" action="{{ url_for('financeiro_delete', id=transacao.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir esta transação? O estoque será revertido.')">
+                                    <button type="submit" class="btn btn-outline-danger" title="Excluir">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            Nenhuma transação registrada
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- ===== MODAL NOVA TRANSAÇÃO ===== -->
+<!-- ========================================== -->
+<div class="modal fade" id="novaTransacao" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nova Transação</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-        </td>
-    </tr>
-    {% else %}
-    <tr>
-        <td colspan="9" class="text-center text-muted py-4">
-            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-            Nenhuma transação registrada
-        </td>
-    </tr>
-    {% endfor %}
-</tbody>
+            <form method="POST" id="formNovaTransacao">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>📌 Regras:</strong>
+                        <ul class="mb-0">
+                            <li><span class="text-success">ENTRADA</span> = Venda → <span class="text-danger">Estoque DIMINUI</span></li>
+                            <li><span class="text-danger">SAÍDA</span> = Despesa → <span class="text-muted">Não afeta estoque</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Tipo *</label>
+                                <select name="tipo" class="form-select" required id="tipoTransacao" onchange="toggleCampos()">
+                                    <option value="entrada">Entrada (Venda) ⬇️ Estoque</option>
+                                    <option value="saida">Saída (Despesa)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Categoria</label>
+                                <select name="categoria_selecionada" class="form-select" id="categoriaSelect">
+                                    <option value="Geral">Geral</option>
+                                    <optgroup label="Categorias Padrão">
+                                        <option value="Fixa">Despesa Fixa</option>
+                                        <option value="Variável">Despesa Variável</option>
+                                        <option value="Dívida">Dívida</option>
+                                        <option value="Imposto">Imposto</option>
+                                        <option value="Folha">Folha de Pagamento</option>
+                                        <option value="Marketing">Marketing</option>
+                                        <option value="Manutenção">Manutenção</option>
+                                        <option value="Venda">Venda</option>
+                                    </optgroup>
+                                    {% if categorias_existentes %}
+                                    <optgroup label="Categorias Usadas">
+                                        {% for cat in categorias_existentes %}
+                                            {% if cat not in ['Fixa','Variável','Dívida','Imposto','Folha','Marketing','Manutenção','Venda','Geral'] %}
+                                            <option value="{{ cat }}">{{ cat }}</option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </optgroup>
+                                    {% endif %}
+                                    <option value="nova">+ Criar nova categoria</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-12" id="novaCategoriaDiv" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Nova Categoria</label>
+                                <input type="text" name="categoria_personalizada" class="form-control" placeholder="Digite a nova categoria">
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Descrição *</label>
+                                <input type="text" name="descricao" class="form-control" required placeholder="Ex: Venda de 10 camisas">
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6" id="clienteDiv" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Cliente</label>
+                                <select name="cliente_id" class="form-select">
+                                    <option value="">Selecione um cliente...</option>
+                                    {% for cliente in clientes %}
+                                    <option value="{{ cliente.id }}">{{ cliente.nome }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">Cliente da venda</small>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6" id="produtoDiv" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Produto</label>
+                                <select name="produto_id" class="form-select" id="produtoSelect">
+                                    <option value="">Selecione um produto...</option>
+                                    {% for produto in produtos %}
+                                    <option value="{{ produto.id }}">{{ produto.nome }} (Estoque: {{ produto.estoque_atual }})</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted" id="produtoLabel">⬇️ Venda → Estoque diminui</small>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6" id="quantidadeDiv" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Quantidade</label>
+                                <input type="number" name="quantidade" class="form-control" id="quantidadeInput" min="1" value="1">
+                                <small class="text-muted">Quantidade vendida</small>
+                            </div>
+                        </div>
+
+                        <div id="mensagemEstoque" class="col-12"></div>
+
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Valor (R$) *</label>
+                                <input type="number" name="valor" class="form-control" step="0.01" min="0.01" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom" id="btnSalvarTransacao">Registrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- ===== MODAIS EDITAR TRANSAÇÃO ===== -->
+<!-- ========================================== -->
+{% for transacao in transacoes %}
+<div class="modal fade" id="editarTransacao{{ transacao.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Transação</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('financeiro_editar', id=transacao.id) }}" class="formEditarTransacao">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Tipo</label>
+                                <select name="tipo" class="form-select" required>
+                                    <option value="entrada" {% if transacao.tipo == 'entrada' %}selected{% endif %}>Entrada (Venda) ⬇️</option>
+                                    <option value="saida" {% if transacao.tipo == 'saida' %}selected{% endif %}>Saída (Despesa)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Categoria</label>
+                                <select name="categoria_selecionada" class="form-select">
+                                    <option value="{{ transacao.categoria or 'Geral' }}">{{ transacao.categoria or 'Geral' }}</option>
+                                    <option value="Geral">Geral</option>
+                                    <option value="Fixa">Despesa Fixa</option>
+                                    <option value="Variável">Despesa Variável</option>
+                                    <option value="Dívida">Dívida</option>
+                                    <option value="Imposto">Imposto</option>
+                                    <option value="Folha">Folha de Pagamento</option>
+                                    <option value="Marketing">Marketing</option>
+                                    <option value="Manutenção">Manutenção</option>
+                                    <option value="Venda">Venda</option>
+                                    <option value="nova">+ Criar nova categoria</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-12" id="novaCategoriaDivEdit{{ transacao.id }}" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Nova Categoria</label>
+                                <input type="text" name="categoria_personalizada" class="form-control" placeholder="Digite a nova categoria">
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Descrição *</label>
+                                <input type="text" name="descricao" class="form-control" value="{{ transacao.descricao }}" required>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Cliente</label>
+                                <select name="cliente_id" class="form-select">
+                                    <option value="">Selecione...</option>
+                                    {% for cliente in clientes %}
+                                    <option value="{{ cliente.id }}" {% if transacao.cliente_id == cliente.id %}selected{% endif %}>
+                                        {{ cliente.nome }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Produto</label>
+                                <select name="produto_id" class="form-select">
+                                    <option value="">Selecione...</option>
+                                    {% for produto in produtos %}
+                                    <option value="{{ produto.id }}" {% if transacao.produto_id == produto.id %}selected{% endif %}>
+                                        {{ produto.nome }} (Estoque: {{ produto.estoque_atual }})
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Quantidade</label>
+                                <input type="number" name="quantidade" class="form-control" min="0" value="{{ transacao.quantidade or 0 }}">
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Valor (R$) *</label>
+                                <input type="number" name="valor" class="form-control" step="0.01" min="0.01" value="{{ transacao.valor }}" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Atualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- ========================================== -->
+<!-- ===== SCRIPTS ===== -->
+<!-- ========================================== -->
+<script>
+    // ===== FUNÇÃO PARA MOSTRAR/ESCONDER CAMPOS =====
+    function toggleCampos() {
+        var tipo = document.getElementById('tipoTransacao').value;
+        var produtoDiv = document.getElementById('produtoDiv');
+        var quantidadeDiv = document.getElementById('quantidadeDiv');
+        var clienteDiv = document.getElementById('clienteDiv');
+        var label = document.getElementById('produtoLabel');
+        var mensagem = document.getElementById('mensagemEstoque');
+        
+        if (tipo === 'entrada') {
+            if (produtoDiv) produtoDiv.style.display = 'block';
+            if (quantidadeDiv) quantidadeDiv.style.display = 'block';
+            if (clienteDiv) clienteDiv.style.display = 'block';
+            if (label) label.innerHTML = '⬇️ Venda → Estoque diminui';
+        } else {
+            if (produtoDiv) produtoDiv.style.display = 'none';
+            if (quantidadeDiv) quantidadeDiv.style.display = 'none';
+            if (clienteDiv) clienteDiv.style.display = 'none';
+            if (mensagem) mensagem.innerHTML = '';
+        }
+    }
+
+    // ===== VALIDAÇÃO DE ESTOQUE =====
+    document.addEventListener('DOMContentLoaded', function() {
+        var produtoSelect = document.getElementById('produtoSelect');
+        var quantidadeInput = document.getElementById('quantidadeInput');
+        var mensagemEstoque = document.getElementById('mensagemEstoque');
+        var btnSalvar = document.getElementById('btnSalvarTransacao');
+        
+        if (produtoSelect && quantidadeInput && mensagemEstoque) {
+            function verificarEstoque() {
+                var option = produtoSelect.options[produtoSelect.selectedIndex];
+                if (option && option.value) {
+                    var texto = option.text;
+                    var match = texto.match(/Estoque:\s*(\d+)/);
+                    if (match) {
+                        var estoque = parseInt(match[1]);
+                        var quantidade = parseInt(quantidadeInput.value) || 0;
+                        
+                        if (quantidade > estoque) {
+                            mensagemEstoque.innerHTML = '<div class="alert alert-danger">⚠️ Quantidade (' + quantidade + ') maior que o estoque disponível (' + estoque + ')</div>';
+                            if (btnSalvar) btnSalvar.disabled = true;
+                        } else if (quantidade > 0 && quantidade <= estoque) {
+                            mensagemEstoque.innerHTML = '<div class="alert alert-success">✅ Estoque suficiente: ' + estoque + ' unidades disponíveis</div>';
+                            if (btnSalvar) btnSalvar.disabled = false;
+                        } else {
+                            mensagemEstoque.innerHTML = '';
+                            if (btnSalvar) btnSalvar.disabled = false;
+                        }
+                    }
+                }
+            }
+            
+            produtoSelect.addEventListener('change', verificarEstoque);
+            quantidadeInput.addEventListener('input', verificarEstoque);
+        }
+    });
+
+    // ===== CATEGORIA NOVA =====
+    document.addEventListener('DOMContentLoaded', function() {
+        var categoriaSelect = document.getElementById('categoriaSelect');
+        if (categoriaSelect) {
+            categoriaSelect.addEventListener('change', function() {
+                var novaDiv = document.getElementById('novaCategoriaDiv');
+                if (this.value === 'nova') {
+                    if (novaDiv) novaDiv.style.display = 'block';
+                } else {
+                    if (novaDiv) novaDiv.style.display = 'none';
+                }
+            });
+        }
+
+        // Categoria nova nos modais de edição
+        document.querySelectorAll('[id^="novaCategoriaDivEdit"]').forEach(function(div) {
+            var select = div.closest('.modal-body').querySelector('select[name="categoria_selecionada"]');
+            if (select) {
+                select.addEventListener('change', function() {
+                    if (this.value === 'nova') {
+                        div.style.display = 'block';
+                    } else {
+                        div.style.display = 'none';
+                    }
+                });
+            }
+        });
+    });
+
+    // ===== INICIALIZAR =====
+    document.addEventListener('DOMContentLoaded', function() {
+        toggleCampos();
+    });
+</script>
+{% endblock %}
