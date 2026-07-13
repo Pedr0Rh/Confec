@@ -111,17 +111,25 @@
             </div>
             <form method="POST" action="{{ url_for('produto_novo') }}">
                 <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> 
+                        <strong>SKU automático:</strong> O SKU será gerado automaticamente baseado no nome do produto.
+                    </div>
                     <div class="row">
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Nome *</label>
-                                <input type="text" name="nome" class="form-control" required>
+                                <input type="text" name="nome" class="form-control" required id="nomeProduto" oninput="previewSku()">
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">SKU</label>
-                                <input type="text" name="sku" class="form-control" placeholder="Código único">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-tag"></i></span>
+                                    <input type="text" name="sku_display" class="form-control" id="skuPreview" placeholder="Será gerado automaticamente" readonly style="background: #f3f4f8;">
+                                </div>
+                                <small class="text-muted">O SKU será gerado automaticamente ao salvar</small>
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -241,7 +249,11 @@
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">SKU</label>
-                                <input type="text" name="sku" class="form-control" value="{{ produto.sku or '' }}">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-tag"></i></span>
+                                    <input type="text" name="sku" class="form-control" value="{{ produto.sku or '' }}" placeholder="SKU atual">
+                                </div>
+                                <small class="text-muted">Deixe em branco para manter o SKU atual</small>
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -307,18 +319,42 @@
 {% endfor %}
 
 <script>
+    // ===== PREVISUALIZAÇÃO DO SKU =====
+    function previewSku() {
+        var nome = document.getElementById('nomeProduto').value;
+        var preview = document.getElementById('skuPreview');
+        
+        if (nome && nome.trim() !== '') {
+            // Gerar base do SKU (primeiras 4 letras)
+            var palavras = nome.trim().toUpperCase().split(' ');
+            var skuBase = '';
+            
+            if (palavras.length >= 2) {
+                for (var i = 0; i < Math.min(palavras.length, 4); i++) {
+                    skuBase += palavras[i][0];
+                }
+            } else {
+                skuBase = nome.substring(0, 4).toUpperCase();
+            }
+            
+            preview.value = skuBase + '-XXX (será gerado automaticamente)';
+            preview.style.color = '#6b7280';
+        } else {
+            preview.value = 'Será gerado automaticamente';
+            preview.style.color = '#6b7280';
+        }
+    }
+
+    // ===== LIMPAR PREVISUALIZAÇÃO AO FECHAR O MODAL =====
     document.addEventListener('DOMContentLoaded', function() {
-        var modais = document.querySelectorAll('.modal');
-        modais.forEach(function(modal) {
+        var modal = document.getElementById('novoProduto');
+        if (modal) {
             modal.addEventListener('hidden.bs.modal', function() {
-                document.querySelectorAll('.modal-backdrop').forEach(function(el) {
-                    el.remove();
-                });
-                document.body.classList.remove('modal-open');
-                document.body.style.overflow = '';
-                document.body.style.paddingRight = '';
+                document.getElementById('nomeProduto').value = '';
+                document.getElementById('skuPreview').value = 'Será gerado automaticamente';
+                document.getElementById('skuPreview').style.color = '#6b7280';
             });
-        });
+        }
     });
 </script>
 {% endblock %}

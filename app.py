@@ -200,14 +200,19 @@ def gerar_sku(nome_produto):
     return f'{sku_base}-001'
 
 # ==========================================
-# FUNÇÃO PARA GERAR NÚMERO DO PEDIDO (SEM LACUNAS)
+# FUNÇÃO PARA GERAR NÚMERO DO PEDIDO (COM DATA)
 # ==========================================
 
 def gerar_numero_pedido():
-    """Gera um número de pedido sequencial sem lacunas"""
-    ano = datetime.now().year
+    """Gera um número de pedido sequencial com data no formato PED-YYYY-MM-DD-XXXX"""
+    agora = datetime.now()
+    ano = agora.year
+    mes = f"{agora.month:02d}"
+    dia = f"{agora.day:02d}"
+    prefixo = f'PED-{ano}-{mes}-{dia}'
     
-    pedidos = query_all("""
+    # Buscar o último pedido do dia
+    ultimo = query_one("""
         SELECT numero_pedido FROM (
             SELECT numero_pedido FROM transacoes_financeiras 
             WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
@@ -215,48 +220,36 @@ def gerar_numero_pedido():
             SELECT numero_pedido FROM producoes 
             WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
         ) AS todos_pedidos
-        ORDER BY numero_pedido
-    """, (f'PED-{ano}-%', f'PED-{ano}-%'))
+        ORDER BY numero_pedido DESC LIMIT 1
+    """, (f'{prefixo}-%', f'{prefixo}-%'))
     
-    numeros = []
-    for p in pedidos:
-        if p and p['numero_pedido']:
-            partes = p['numero_pedido'].split('-')
-            if len(partes) == 3:
-                try:
-                    numeros.append(int(partes[2]))
-                except:
-                    pass
+    if ultimo and ultimo['numero_pedido']:
+        partes = ultimo['numero_pedido'].split('-')
+        if len(partes) == 5:
+            try:
+                num = int(partes[4]) + 1
+                return f'{prefixo}-{num:04d}'
+            except:
+                pass
     
-    if not numeros:
-        return f'PED-{ano}-0001'
-    
-    numeros.sort()
-    proximo = 1
-    for num in numeros:
-        if num == proximo:
-            proximo += 1
-        else:
-            break
-    
-    return f'PED-{ano}-{proximo:04d}'
+    return f'{prefixo}-0001'
 
 # ==========================================
-# FUNÇÃO PARA REORGANIZAR NÚMEROS DE PEDIDO
+# FUNÇÃO PARA REORGANIZAR NÚMEROS DE PEDIDO (COM DATA)
 # ==========================================
 
 def reorganizar_numeros_pedido():
-    """Reorganiza os números de pedido para eliminar lacunas"""
-    ano = datetime.now().year
+    """Reorganiza os números de pedido por data para eliminar lacunas"""
     
+    # Buscar todos os pedidos ordenados por data
     pedidos = query_all("""
-        SELECT id, numero_pedido, 'transacao' as tipo FROM transacoes_financeiras 
-        WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
+        SELECT id, numero_pedido, data, 'transacao' as tipo FROM transacoes_financeiras 
+        WHERE numero_pedido IS NOT NULL
         UNION ALL
-        SELECT id, numero_pedido, 'producao' as tipo FROM producoes 
-        WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
-        ORDER BY numero_pedido
-    """, (f'PED-{ano}-%', f'PED-{ano}-%'))
+        SELECT id, numero_pedido, data_entrada as data, 'producao' as tipo FROM producoes 
+        WHERE numero_pedido IS NOT NULL
+        ORDER BY data ASC
+    """)
     
     if not pedidos:
         return
@@ -268,23 +261,36 @@ def reorganizar_numeros_pedido():
     try:
         cur = conn.cursor()
         
-        novo_num = 1
+        # Agrupar por data
+        pedidos_por_data = {}
         for pedido in pedidos:
-            novo_pedido = f'PED-{ano}-{novo_num:04d}'
-            novo_num += 1
+            data_str = pedido['data'].strftime('%Y-%m-%d') if pedido['data'] else datetime.now().strftime('%Y-%m-%d')
+            if data_str not in pedidos_por_data:
+                pedidos_por_data[data_str] = []
+            pedidos_por_data[data_str].append(pedido)
+        
+        # Reorganizar cada grupo por data
+        for data_str, lista in pedidos_por_data.items():
+            ano, mes, dia = data_str.split('-')
+            prefixo = f'PED-{ano}-{mes}-{dia}'
+            contador = 1
             
-            if pedido['tipo'] == 'transacao':
-                cur.execute("""
-                    UPDATE transacoes_financeiras 
-                    SET numero_pedido = %s 
-                    WHERE id = %s
-                """, (novo_pedido, pedido['id']))
-            else:
-                cur.execute("""
-                    UPDATE producoes 
-                    SET numero_pedido = %s 
-                    WHERE id = %s
-                """, (novo_pedido, pedido['id']))
+            for pedido in lista:
+                novo_pedido = f'{prefixo}-{contador:04d}'
+                contador += 1
+                
+                if pedido['tipo'] == 'transacao':
+                    cur.execute("""
+                        UPDATE transacoes_financeiras 
+                        SET numero_pedido = %s 
+                        WHERE id = %s
+                    """, (novo_pedido, pedido['id']))
+                else:
+                    cur.execute("""
+                        UPDATE producoes 
+                        SET numero_pedido = %s 
+                        WHERE id = %s
+                    """, (novo_pedido, pedido['id']))
         
         conn.commit()
         cur.close()
@@ -295,7 +301,6 @@ def reorganizar_numeros_pedido():
         conn.rollback()
         conn.close()
         print(f"❌ Erro ao reorganizar números: {e}")
-
 # ==========================================
 # FUNÇÃO PARA GERAR RELATÓRIO PDF (APENAS REPORTLAB)
 # ==========================================
