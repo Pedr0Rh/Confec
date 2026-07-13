@@ -232,7 +232,12 @@
                 radial-gradient(700px 500px at -10% 110%, rgba(8,217,214,0.06), transparent 60%);
             z-index: 0;
         }
-        .main-content > * { position: relative; z-index: 1; }
+        .main-content > *:not(.modal):not(.modal-backdrop):not(.offcanvas):not(.offcanvas-backdrop) { position: relative; z-index: 1; }
+        /* Garante que modais fiquem acima de tudo (evita travamento por backdrop) */
+        .modal { z-index: 1060 !important; }
+        .modal-backdrop { z-index: 1055 !important; }
+        .offcanvas { z-index: 1060 !important; }
+        .offcanvas-backdrop { z-index: 1055 !important; }
 
         .page-header {
             margin-bottom: 28px;
