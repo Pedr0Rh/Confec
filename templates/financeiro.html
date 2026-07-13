@@ -138,7 +138,6 @@
                         <ul class="mb-0">
                             <li><span class="text-success">ENTRADA</span> = Venda → <span class="text-danger">Estoque DIMINUI</span></li>
                             <li><span class="text-danger">SAÍDA</span> = Despesa → <span class="text-muted">Não afeta estoque</span></li>
-                            <li><span class="text-primary">PRODUÇÃO FINALIZADA</span> → <span class="text-success">Estoque AUMENTA</span> (na aba Produção)</li>
                         </ul>
                     </div>
 
@@ -232,13 +231,13 @@
                         <div class="col-12 col-md-6" id="quantidadeDiv" style="display: none;">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Quantidade</label>
-                                <input type="number" name="quantidade" class="form-control" id="quantidadeInput" min="0" value="1">
+                                <input type="number" name="quantidade" class="form-control" id="quantidadeInput" min="1" value="1">
                                 <small class="text-muted">Quantidade vendida</small>
                             </div>
                         </div>
 
                         <!-- Mensagem de validação de estoque -->
-                        <div id="mensagemEstoque"></div>
+                        <div id="mensagemEstoque" class="col-12"></div>
 
                         <!-- VALOR -->
                         <div class="col-12 col-md-6">
