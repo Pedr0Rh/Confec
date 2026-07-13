@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -8,6 +8,30 @@ from datetime import datetime
 import socket
 import urllib.parse
 import traceback
+import io
+import base64
+from datetime import datetime
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
+
+# ==========================================
+# IMPORTAÇÕES PARA PDF
+# ==========================================
+
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.units import mm, cm
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.graphics.charts.piecharts import Pie
+from reportlab.lib.fonts import addMapping
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 load_dotenv()
 
@@ -153,6 +177,35 @@ def execute_sql(sql, params=None):
         return False
 
 # ==========================================
+# FUNÇÃO PARA GERAR SKU AUTOMÁTICO
+# ==========================================
+
+def gerar_sku(nome_produto):
+    """Gera um SKU automático baseado no nome do produto"""
+    palavras = nome_produto.strip().upper().split()
+    if len(palavras) >= 2:
+        sku_base = ''.join([p[0] for p in palavras[:4]])
+    else:
+        sku_base = nome_produto[:4].upper()
+    
+    ultimo = query_one("""
+        SELECT sku FROM produtos 
+        WHERE sku LIKE %s 
+        ORDER BY sku DESC LIMIT 1
+    """, (f'{sku_base}%',))
+    
+    if ultimo and ultimo['sku']:
+        partes = ultimo['sku'].split('-')
+        if len(partes) == 2:
+            try:
+                num = int(partes[1]) + 1
+                return f'{sku_base}-{num:03d}'
+            except:
+                pass
+    
+    return f'{sku_base}-001'
+
+# ==========================================
 # FUNÇÃO PARA GERAR NÚMERO DO PEDIDO (SEM LACUNAS)
 # ==========================================
 
@@ -160,7 +213,6 @@ def gerar_numero_pedido():
     """Gera um número de pedido sequencial sem lacunas"""
     ano = datetime.now().year
     
-    # Buscar TODOS os números de pedido do ano (de ambas as tabelas)
     pedidos = query_all("""
         SELECT numero_pedido FROM (
             SELECT numero_pedido FROM transacoes_financeiras 
@@ -172,7 +224,6 @@ def gerar_numero_pedido():
         ORDER BY numero_pedido
     """, (f'PED-{ano}-%', f'PED-{ano}-%'))
     
-    # Extrair os números sequenciais
     numeros = []
     for p in pedidos:
         if p and p['numero_pedido']:
@@ -183,11 +234,9 @@ def gerar_numero_pedido():
                 except:
                     pass
     
-    # Se não houver pedidos, começar do 1
     if not numeros:
         return f'PED-{ano}-0001'
     
-    # Ordenar e encontrar a primeira lacuna
     numeros.sort()
     proximo = 1
     for num in numeros:
@@ -206,7 +255,6 @@ def reorganizar_numeros_pedido():
     """Reorganiza os números de pedido para eliminar lacunas"""
     ano = datetime.now().year
     
-    # Buscar todos os pedidos do ano em ordem de criação
     pedidos = query_all("""
         SELECT id, numero_pedido, 'transacao' as tipo FROM transacoes_financeiras 
         WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
@@ -226,13 +274,11 @@ def reorganizar_numeros_pedido():
     try:
         cur = conn.cursor()
         
-        # Reorganizar sequencialmente
         novo_num = 1
         for pedido in pedidos:
             novo_pedido = f'PED-{ano}-{novo_num:04d}'
             novo_num += 1
             
-            # Atualizar na tabela correta
             if pedido['tipo'] == 'transacao':
                 cur.execute("""
                     UPDATE transacoes_financeiras 
@@ -255,6 +301,384 @@ def reorganizar_numeros_pedido():
         conn.rollback()
         conn.close()
         print(f"❌ Erro ao reorganizar números: {e}")
+
+# ==========================================
+# FUNÇÃO PARA GERAR RELATÓRIO PDF
+# ==========================================
+
+def gerar_relatorio_pdf():
+    """Gera um relatório completo em PDF com gráficos e tabelas"""
+    
+    dados = {
+        'resumo': query_one("""
+            SELECT 
+                (SELECT COUNT(*) FROM produtos WHERE status = 'ativo') as total_produtos,
+                (SELECT COALESCE(SUM(estoque_atual), 0) FROM produtos) as total_estoque,
+                (SELECT COALESCE(SUM(estoque_atual * preco_custo), 0) FROM produtos) as valor_estoque,
+                (SELECT COUNT(*) FROM clientes) as total_clientes,
+                (SELECT COUNT(*) FROM colaboradores) as total_colaboradores,
+                (SELECT COUNT(*) FROM producoes WHERE finalizado = false) as producoes_andamento,
+                (SELECT COUNT(*) FROM producoes WHERE finalizado = true) as producoes_finalizadas,
+                (SELECT COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN valor ELSE 0 END), 0) FROM transacoes_financeiras) as total_entradas,
+                (SELECT COALESCE(SUM(CASE WHEN tipo = 'saida' THEN valor ELSE 0 END), 0) FROM transacoes_financeiras) as total_saidas,
+                (SELECT COUNT(*) FROM transacoes_financeiras WHERE tipo = 'entrada') as total_vendas,
+                (SELECT COUNT(*) FROM transacoes_financeiras WHERE tipo = 'saida') as total_despesas
+        """),
+        
+        'vendas_por_dia': query_all("""
+            SELECT 
+                TO_CHAR(DATE(data), 'DD/MM') AS dia,
+                COUNT(*) AS quantidade,
+                COALESCE(SUM(valor), 0) AS total,
+                COALESCE(SUM(quantidade), 0) AS itens_vendidos
+            FROM transacoes_financeiras
+            WHERE tipo = 'entrada'
+              AND data >= (CURRENT_DATE - INTERVAL '29 days')
+            GROUP BY DATE(data)
+            ORDER BY DATE(data) ASC
+        """) or [],
+        
+        'top_clientes': query_all("""
+            SELECT 
+                c.nome,
+                c.telefone,
+                COUNT(t.id) AS total_vendas,
+                COALESCE(SUM(t.valor), 0) AS total_gasto,
+                COALESCE(SUM(t.quantidade), 0) AS total_produtos
+            FROM clientes c
+            JOIN transacoes_financeiras t ON t.cliente_id = c.id
+            WHERE t.tipo = 'entrada'
+            GROUP BY c.id, c.nome, c.telefone
+            ORDER BY total_gasto DESC
+            LIMIT 10
+        """) or [],
+        
+        'produtos_mais_vendidos': query_all("""
+            SELECT 
+                p.nome,
+                p.sku,
+                COALESCE(SUM(t.quantidade), 0) AS total_vendido,
+                COALESCE(SUM(t.valor), 0) AS total_faturamento,
+                p.estoque_atual
+            FROM produtos p
+            JOIN transacoes_financeiras t ON t.produto_id = p.id
+            WHERE t.tipo = 'entrada'
+            GROUP BY p.id, p.nome, p.sku, p.estoque_atual
+            ORDER BY total_vendido DESC
+            LIMIT 10
+        """) or [],
+        
+        'produtos_estoque_baixo': query_all("""
+            SELECT 
+                nome,
+                sku,
+                estoque_atual,
+                estoque_minimo
+            FROM produtos 
+            WHERE status = 'ativo' AND estoque_atual <= estoque_minimo
+            ORDER BY estoque_atual ASC
+            LIMIT 20
+        """) or [],
+        
+        'ultimas_vendas': query_all("""
+            SELECT 
+                t.numero_pedido,
+                t.data,
+                t.valor,
+                t.quantidade,
+                p.nome as produto_nome,
+                c.nome as cliente_nome
+            FROM transacoes_financeiras t
+            LEFT JOIN produtos p ON t.produto_id = p.id
+            LEFT JOIN clientes c ON t.cliente_id = c.id
+            WHERE t.tipo = 'entrada'
+            ORDER BY t.data DESC
+            LIMIT 20
+        """) or [],
+        
+        'ultimas_movimentacoes': query_all("""
+            SELECT 
+                m.data_movimentacao,
+                m.tipo,
+                m.origem,
+                m.quantidade,
+                m.descricao,
+                p.nome as produto_nome
+            FROM movimentacoes_estoque m
+            LEFT JOIN produtos p ON m.produto_id = p.id
+            ORDER BY m.data_movimentacao DESC
+            LIMIT 20
+        """) or []
+    }
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                           rightMargin=15*mm, leftMargin=15*mm,
+                           topMargin=20*mm, bottomMargin=15*mm)
+    
+    styles = getSampleStyleSheet()
+    story = []
+    
+    # TÍTULO
+    title_style = ParagraphStyle(
+        'TitleStyle',
+        parent=styles['Title'],
+        fontSize=20,
+        textColor=colors.HexColor('#1a1a2e'),
+        alignment=TA_CENTER,
+        spaceAfter=6
+    )
+    story.append(Paragraph("📊 RELATÓRIO COMPLETO", title_style))
+    story.append(Paragraph(f"Gerado em: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+    story.append(Spacer(1, 6*mm))
+    
+    # 1. RESUMO GERAL
+    story.append(Paragraph("1. RESUMO GERAL", styles['Heading2']))
+    story.append(Spacer(1, 3*mm))
+    
+    resumo = dados['resumo']
+    resumo_data = [
+        ['Métrica', 'Valor'],
+        ['Total de Produtos', str(resumo['total_produtos'] or 0)],
+        ['Itens em Estoque', str(resumo['total_estoque'] or 0)],
+        ['Valor do Estoque', f'R$ {resumo["valor_estoque"] or 0:.2f}'],
+        ['Total de Clientes', str(resumo['total_clientes'] or 0)],
+        ['Total de Colaboradores', str(resumo['total_colaboradores'] or 0)],
+        ['Produções em Andamento', str(resumo['producoes_andamento'] or 0)],
+        ['Produções Finalizadas', str(resumo['producoes_finalizadas'] or 0)],
+        ['Total de Vendas', str(resumo['total_vendas'] or 0)],
+        ['Total de Despesas', str(resumo['total_despesas'] or 0)],
+        ['Total de Entradas', f'R$ {resumo["total_entradas"] or 0:.2f}'],
+        ['Total de Saídas', f'R$ {resumo["total_saidas"] or 0:.2f}'],
+        ['Saldo', f'R$ {(resumo["total_entradas"] or 0) - (resumo["total_saidas"] or 0):.2f}'],
+    ]
+    
+    resumo_table = Table(resumo_data, colWidths=[80*mm, 70*mm])
+    resumo_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('PADDING', (0, 0), (-1, -1), 6),
+        ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#f3f4f8')),
+        ('BACKGROUND', (1, 1), (1, -1), colors.white),
+    ]))
+    story.append(resumo_table)
+    story.append(Spacer(1, 6*mm))
+    
+    # 2. VENDAS POR DIA (GRÁFICO)
+    story.append(Paragraph("2. VENDAS POR DIA (ÚLTIMOS 30 DIAS)", styles['Heading2']))
+    story.append(Spacer(1, 3*mm))
+    
+    vendas_data = dados['vendas_por_dia']
+    if vendas_data:
+        plt.figure(figsize=(10, 4))
+        dias = [v['dia'] for v in vendas_data]
+        valores = [float(v['total']) for v in vendas_data]
+        
+        plt.bar(dias, valores, color='#3498db', alpha=0.7)
+        plt.title('Vendas por Dia', fontsize=12, fontweight='bold')
+        plt.xlabel('Dia', fontsize=10)
+        plt.ylabel('Valor (R$)', fontsize=10)
+        plt.xticks(rotation=45, ha='right', fontsize=8)
+        plt.tight_layout()
+        
+        img_buffer = io.BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=100, bbox_inches='tight')
+        plt.close()
+        img_buffer.seek(0)
+        
+        img = Image(img_buffer, width=160*mm, height=60*mm)
+        story.append(img)
+        story.append(Spacer(1, 6*mm))
+    else:
+        story.append(Paragraph("Nenhuma venda registrada nos últimos 30 dias.", styles['Normal']))
+        story.append(Spacer(1, 6*mm))
+    
+    # 3. TOP CLIENTES
+    story.append(Paragraph("3. TOP 10 CLIENTES", styles['Heading2']))
+    story.append(Spacer(1, 3*mm))
+    
+    top_clientes = dados['top_clientes']
+    if top_clientes:
+        clientes_data = [['Cliente', 'Vendas', 'Total Gasto', 'Produtos']]
+        for c in top_clientes:
+            clientes_data.append([
+                c['nome'][:25],
+                str(c['total_vendas']),
+                f'R$ {c["total_gasto"]:.2f}',
+                str(c['total_produtos'])
+            ])
+        
+        clientes_table = Table(clientes_data, colWidths=[60*mm, 30*mm, 40*mm, 30*mm])
+        clientes_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 5),
+        ]))
+        story.append(clientes_table)
+    else:
+        story.append(Paragraph("Nenhum cliente com vendas registradas.", styles['Normal']))
+    story.append(Spacer(1, 6*mm))
+    
+    # 4. PRODUTOS MAIS VENDIDOS
+    story.append(Paragraph("4. TOP 10 PRODUTOS MAIS VENDIDOS", styles['Heading2']))
+    story.append(Spacer(1, 3*mm))
+    
+    produtos_vendidos = dados['produtos_mais_vendidos']
+    if produtos_vendidos:
+        prod_data = [['Produto', 'SKU', 'Vendidos', 'Faturamento', 'Estoque']]
+        for p in produtos_vendidos:
+            prod_data.append([
+                p['nome'][:20],
+                p['sku'] or '-',
+                str(p['total_vendido']),
+                f'R$ {p["total_faturamento"]:.2f}',
+                str(p['estoque_atual'])
+            ])
+        
+        prod_table = Table(prod_data, colWidths=[50*mm, 25*mm, 25*mm, 35*mm, 25*mm])
+        prod_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 5),
+        ]))
+        story.append(prod_table)
+    else:
+        story.append(Paragraph("Nenhum produto vendido.", styles['Normal']))
+    story.append(Spacer(1, 6*mm))
+    
+    # 5. PRODUTOS COM ESTOQUE BAIXO
+    story.append(Paragraph("5. PRODUTOS COM ESTOQUE BAIXO", styles['Heading2']))
+    story.append(Spacer(1, 3*mm))
+    
+    estoque_baixo = dados['produtos_estoque_baixo']
+    if estoque_baixo:
+        baixo_data = [['Produto', 'SKU', 'Atual', 'Mínimo']]
+        for p in estoque_baixo:
+            baixo_data.append([
+                p['nome'][:25],
+                p['sku'] or '-',
+                str(p['estoque_atual']),
+                str(p['estoque_minimo'])
+            ])
+        
+        baixo_table = Table(baixo_data, colWidths=[70*mm, 30*mm, 30*mm, 30*mm])
+        baixo_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#ef4444')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 5),
+        ]))
+        story.append(baixo_table)
+    else:
+        story.append(Paragraph("✅ Todos os produtos estão com estoque adequado.", styles['Normal']))
+    story.append(Spacer(1, 6*mm))
+    
+    # 6. ÚLTIMAS VENDAS
+    story.append(PageBreak())
+    story.append(Paragraph("6. ÚLTIMAS 20 VENDAS", styles['Heading2']))
+    story.append(Spacer(1, 3*mm))
+    
+    ultimas_vendas = dados['ultimas_vendas']
+    if ultimas_vendas:
+        venda_data = [['Pedido', 'Data', 'Cliente', 'Produto', 'Qtd', 'Valor']]
+        for v in ultimas_vendas:
+            venda_data.append([
+                v['numero_pedido'] or '-',
+                v['data'].strftime('%d/%m/%Y') if v['data'] else '-',
+                v['cliente_nome'][:20] if v['cliente_nome'] else '-',
+                v['produto_nome'][:20] if v['produto_nome'] else '-',
+                str(v['quantidade'] or 0),
+                f'R$ {v["valor"]:.2f}'
+            ])
+        
+        venda_table = Table(venda_data, colWidths=[30*mm, 30*mm, 35*mm, 35*mm, 20*mm, 30*mm])
+        venda_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(venda_table)
+    else:
+        story.append(Paragraph("Nenhuma venda registrada.", styles['Normal']))
+    story.append(Spacer(1, 6*mm))
+    
+    # 7. ÚLTIMAS MOVIMENTAÇÕES
+    story.append(Paragraph("7. ÚLTIMAS 20 MOVIMENTAÇÕES DE ESTOQUE", styles['Heading2']))
+    story.append(Spacer(1, 3*mm))
+    
+    movimentacoes = dados['ultimas_movimentacoes']
+    if movimentacoes:
+        mov_data = [['Data', 'Produto', 'Tipo', 'Origem', 'Qtd', 'Descrição']]
+        for m in movimentacoes:
+            mov_data.append([
+                m['data_movimentacao'].strftime('%d/%m/%Y %H:%M') if m['data_movimentacao'] else '-',
+                m['produto_nome'][:20] if m['produto_nome'] else '-',
+                'Entrada' if m['tipo'] == 'entrada' else 'Saída',
+                m['origem'] or '-',
+                str(m['quantidade']),
+                m['descricao'][:30] if m['descricao'] else '-'
+            ])
+        
+        mov_table = Table(mov_data, colWidths=[35*mm, 35*mm, 20*mm, 25*mm, 20*mm, 35*mm])
+        mov_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e5e7eb')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 4),
+        ]))
+        story.append(mov_table)
+    else:
+        story.append(Paragraph("Nenhuma movimentação registrada.", styles['Normal']))
+    
+    story.append(Spacer(1, 8*mm))
+    story.append(Paragraph(f"Relatório gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')} - Sistema de Gestão", 
+                          styles['Normal']))
+    
+    doc.build(story)
+    pdf_data = buffer.getvalue()
+    buffer.close()
+    
+    return pdf_data
 
 # ==========================================
 # ROTA DE HEALTHCHECK
@@ -290,7 +714,7 @@ def testdb():
         return f"❌ Erro: {str(e)}", 500
 
 # ==========================================
-# LOGIN (DEFINIDO ANTES DE QUALQUER ROTA COM @login_required)
+# LOGIN
 # ==========================================
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -344,7 +768,6 @@ def login_required(f):
 @app.route('/gerar_numero_pedido')
 @login_required
 def gerar_numero_pedido_ajax():
-    """Retorna o próximo número de pedido via JSON"""
     numero = gerar_numero_pedido()
     return jsonify({'numero': numero})
 
@@ -378,7 +801,6 @@ def index():
             'total': total['total'] if total else 0
         })
 
-    # TOP CLIENTES
     top_clientes = query_all("""
         SELECT 
             c.nome,
@@ -393,7 +815,6 @@ def index():
         LIMIT 5
     """) or []
 
-    # VENDAS ÚLTIMOS 7 DIAS
     vendas_por_dia = query_all("""
         SELECT 
             TO_CHAR(DATE(data), 'DD/MM') AS dia,
@@ -453,6 +874,9 @@ def produto_novo():
         preco_venda = float(request.form.get('preco_venda', '0').replace(',', '.') or 0)
         estoque_minimo = int(request.form.get('estoque_minimo', 0) or 0)
         estoque_atual = int(request.form.get('estoque_atual', 0) or 0)
+        
+        sku = gerar_sku(nome)
+        categoria = request.form.get('categoria', '')
 
         sql = """
             INSERT INTO produtos (nome, descricao, sku, categoria, preco_custo, preco_venda, unidade, estoque_minimo, estoque_atual) 
@@ -462,20 +886,20 @@ def produto_novo():
         if execute_sql(sql, (
             nome,
             request.form.get('descricao', ''),
-            request.form.get('sku', ''),
-            request.form.get('categoria', ''),
+            sku,
+            categoria,
             preco_custo,
             preco_venda,
             request.form.get('unidade', 'UN'),
             estoque_minimo,
             estoque_atual
         )):
-            flash('Produto cadastrado com sucesso!')
+            flash(f'✅ Produto cadastrado com sucesso! SKU: {sku}')
         else:
-            flash('Erro ao cadastrar produto')
+            flash('❌ Erro ao cadastrar produto')
     except Exception as e:
         print(f"Erro: {e}")
-        flash('Erro ao cadastrar produto')
+        flash('❌ Erro ao cadastrar produto')
     return redirect(url_for('estoque'))
 
 @app.route('/estoque/produto/editar/<string:id>', methods=['POST'])
@@ -511,21 +935,21 @@ def produto_editar(id):
             request.form.get('status', 'ativo'),
             id
         )):
-            flash('Produto atualizado com sucesso!')
+            flash('✅ Produto atualizado com sucesso!')
         else:
-            flash('Erro ao atualizar produto')
+            flash('❌ Erro ao atualizar produto')
     except Exception as e:
         print(f"Erro: {e}")
-        flash('Erro ao atualizar produto')
+        flash('❌ Erro ao atualizar produto')
     return redirect(url_for('estoque'))
 
 @app.route('/estoque/produto/delete/<string:id>', methods=['POST'])
 @login_required
 def produto_delete(id):
     if execute_sql("UPDATE produtos SET status = 'inativo' WHERE id = %s", (id,)):
-        flash('Produto desativado com sucesso!')
+        flash('✅ Produto desativado com sucesso!')
     else:
-        flash('Erro ao desativar produto')
+        flash('❌ Erro ao desativar produto')
     return redirect(url_for('estoque'))
 
 @app.route('/estoque/movimentacoes/<string:produto_id>')
@@ -576,9 +1000,9 @@ def estoque_ajustar(produto_id):
             VALUES (%s, %s, %s, %s, %s)
         """
         execute_sql(sql_mov, (produto_id, tipo, 'ajuste', quantidade, descricao))
-        flash('Estoque ajustado com sucesso!')
+        flash('✅ Estoque ajustado com sucesso!')
     else:
-        flash('Erro ao ajustar estoque')
+        flash('❌ Erro ao ajustar estoque')
 
     return redirect(url_for('estoque'))
 
@@ -590,7 +1014,6 @@ def estoque_ajustar(produto_id):
 @login_required
 def producao():
     if request.method == 'POST':
-        # Gerar número do pedido automaticamente
         numero_pedido = gerar_numero_pedido()
         
         sql = """
@@ -649,20 +1072,16 @@ def producao_editar(id):
 @app.route('/producao/delete/<string:id>', methods=['POST'])
 @login_required
 def producao_delete(id):
-    # Buscar a produção antes de excluir
     producao = query_one("SELECT * FROM producoes WHERE id = %s", (id,))
     if not producao:
         flash('Produção não encontrada')
         return redirect(url_for('producao'))
     
-    # Se já estiver finalizada, não pode excluir
     if producao['finalizado']:
         flash('⚠️ Não é possível excluir uma produção já finalizada!')
         return redirect(url_for('producao'))
     
-    # Excluir
     if execute_sql("DELETE FROM producoes WHERE id = %s", (id,)):
-        # Reorganizar os números de pedido após a exclusão
         reorganizar_numeros_pedido()
         flash('✅ Produção excluída com sucesso! Números de pedido reorganizados.')
     else:
@@ -758,7 +1177,7 @@ def colaborador_delete(id):
     return redirect(url_for('colaboradores'))
 
 # ==========================================
-# FINANCEIRO (COM BAIXA NO ESTOQUE E NÚMERO DO PEDIDO)
+# FINANCEIRO
 # ==========================================
 
 @app.route('/financeiro', methods=['GET', 'POST'])
@@ -775,10 +1194,8 @@ def financeiro():
         valor = float(request.form['valor'])
         tipo = request.form['tipo']
         
-        # Gerar número do pedido automaticamente apenas para vendas
         numero_pedido = gerar_numero_pedido() if tipo == 'entrada' else None
 
-        # VALIDAÇÃO: Verificar estoque antes de registrar
         if tipo == 'entrada' and produto_id and quantidade > 0:
             produto_check = query_one("SELECT * FROM produtos WHERE id = %s", (produto_id,))
             if not produto_check:
@@ -797,7 +1214,6 @@ def financeiro():
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
 
-            # 1. Inserir a transação financeira com número do pedido
             sql_transacao = """
                 INSERT INTO transacoes_financeiras 
                 (tipo, categoria, descricao, valor, produto_id, quantidade, cliente_id, numero_pedido) 
@@ -807,7 +1223,6 @@ def financeiro():
             cur.execute(sql_transacao, (tipo, categoria, request.form['descricao'], valor, produto_id, quantidade, cliente_id, numero_pedido))
             transacao_id = cur.fetchone()['id']
 
-            # 2. Se for uma VENDA (entrada) e tiver produto e quantidade
             if tipo == 'entrada' and produto_id and quantidade > 0:
                 cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (produto_id,))
                 produto = cur.fetchone()
@@ -850,7 +1265,6 @@ def financeiro():
 
         return redirect(url_for('financeiro'))
 
-    # GET - mostrar página
     transacoes = query_all("""
         SELECT t.*, p.nome as produto_nome, c.nome as cliente_nome
         FROM transacoes_financeiras t
@@ -886,7 +1300,6 @@ def financeiro():
                          produtos=produtos,
                          clientes=clientes)
 
-
 @app.route('/financeiro/editar/<string:id>', methods=['POST'])
 @login_required
 def financeiro_editar(id):
@@ -912,7 +1325,6 @@ def financeiro_editar(id):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # 1. Reverter alterações da transação original no estoque (se houver)
         if transacao_original['tipo'] == 'entrada' and transacao_original['produto_id'] and transacao_original['quantidade'] > 0:
             cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (transacao_original['produto_id'],))
             produto_original = cur.fetchone()
@@ -924,7 +1336,6 @@ def financeiro_editar(id):
                     WHERE id = %s
                 """, (novo_estoque, transacao_original['produto_id']))
 
-        # 2. Atualizar a transação
         sql_update = """
             UPDATE transacoes_financeiras SET 
                 tipo = %s, categoria = %s, descricao = %s, 
@@ -942,7 +1353,6 @@ def financeiro_editar(id):
             id
         ))
 
-        # 3. Aplicar nova alteração no estoque (se for venda)
         if novo_tipo == 'entrada' and novo_produto_id and nova_quantidade > 0:
             cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (novo_produto_id,))
             produto_novo = cur.fetchone()
@@ -977,7 +1387,6 @@ def financeiro_editar(id):
         flash(f'❌ Erro ao atualizar transação: {str(e)}')
 
     return redirect(url_for('financeiro'))
-
 
 @app.route('/financeiro/delete/<string:id>', methods=['POST'])
 @login_required
@@ -1018,7 +1427,6 @@ def financeiro_delete(id):
         cur.close()
         conn.close()
         
-        # Reorganizar os números de pedido após a exclusão
         reorganizar_numeros_pedido()
         
         flash('✅ Transação excluída com sucesso! Estoque revertido e números reorganizados.')
@@ -1078,12 +1486,15 @@ def relatorio():
         LIMIT 5
     """) or []
 
-    produtos_estoque = query_all("""
-        SELECT nome, estoque_atual 
+    produtos_estoque_baixo = query_all("""
+        SELECT 
+            nome,
+            estoque_atual,
+            estoque_minimo
         FROM produtos 
-        WHERE status = 'ativo' 
-        ORDER BY estoque_atual DESC 
-        LIMIT 5
+        WHERE status = 'ativo' AND estoque_atual <= estoque_minimo
+        ORDER BY estoque_atual ASC
+        LIMIT 10
     """) or []
 
     ultimas_vendas = query_all("""
@@ -1118,13 +1529,32 @@ def relatorio():
                          vendas_por_dia=vendas_por_dia,
                          top_clientes=top_clientes,
                          produtos_mais_vendidos=produtos_mais_vendidos,
-                         produtos_estoque=produtos_estoque,
+                         produtos_estoque_baixo=produtos_estoque_baixo,
                          ultimas_vendas=ultimas_vendas,
                          ultimas_movimentacoes=ultimas_movimentacoes,
                          total_vendas=total_vendas['total'] if total_vendas else 0,
                          total_faturamento=total_faturamento['total'] if total_faturamento else 0,
                          total_clientes=total_clientes['total'] if total_clientes else 0,
                          total_produtos=total_produtos['total'] if total_produtos else 0)
+
+# ==========================================
+# RELATÓRIO PDF
+# ==========================================
+
+@app.route('/relatorio/pdf')
+@login_required
+def relatorio_pdf():
+    try:
+        pdf_data = gerar_relatorio_pdf()
+        return send_file(
+            io.BytesIO(pdf_data),
+            as_attachment=True,
+            download_name=f'relatorio_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf',
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        flash(f'❌ Erro ao gerar PDF: {str(e)}')
+        return redirect(url_for('relatorio'))
 
 # ==========================================
 # CRM
@@ -1192,9 +1622,9 @@ def cliente_novo():
         proximo_contato = datetime.strptime(proximo_contato, '%Y-%m-%d').date()
 
     if execute_sql(sql, (request.form['nome'], request.form['telefone'], request.form['email'], request.form.get('cnpj_cpf'), request.form.get('endereco'), request.form.get('cidade'), request.form.get('estado'), request.form.get('status', 'potencial'), request.form.get('tipo', 'pessoa_fisica'), request.form.get('observacao'), proximo_contato)):
-        flash('Cliente cadastrado com sucesso!')
+        flash('✅ Cliente cadastrado com sucesso!')
     else:
-        flash('Erro ao cadastrar cliente')
+        flash('❌ Erro ao cadastrar cliente')
     return redirect(url_for('crm'))
 
 @app.route('/crm/editar/<string:id>', methods=['POST'])
@@ -1211,9 +1641,9 @@ def cliente_editar(id):
         proximo_contato = datetime.strptime(proximo_contato, '%Y-%m-%d').date()
 
     if execute_sql(sql, (request.form['nome'], request.form['telefone'], request.form['email'], request.form.get('cnpj_cpf'), request.form.get('endereco'), request.form.get('cidade'), request.form.get('estado'), request.form.get('status'), request.form.get('tipo'), request.form.get('observacao'), proximo_contato, id)):
-        flash('Cliente atualizado com sucesso!')
+        flash('✅ Cliente atualizado com sucesso!')
     else:
-        flash('Erro ao atualizar cliente')
+        flash('❌ Erro ao atualizar cliente')
     return redirect(url_for('cliente_detalhe', id=id))
 
 @app.route('/crm/interacao/<string:cliente_id>', methods=['POST'])
@@ -1221,9 +1651,9 @@ def cliente_editar(id):
 def cliente_interacao(cliente_id):
     if execute_sql("INSERT INTO interacoes_clientes (cliente_id, tipo, descricao) VALUES (%s, %s, %s)", (cliente_id, request.form['tipo'], request.form['descricao'])):
         execute_sql("UPDATE clientes SET ultimo_contato = NOW()::date WHERE id = %s", (cliente_id,))
-        flash('Interação registrada com sucesso!')
+        flash('✅ Interação registrada com sucesso!')
     else:
-        flash('Erro ao registrar interação')
+        flash('❌ Erro ao registrar interação')
     return redirect(url_for('cliente_detalhe', id=cliente_id))
 
 @app.route('/crm/buscar', methods=['GET'])
@@ -1247,9 +1677,9 @@ def cliente_buscar():
 @login_required
 def cliente_delete(id):
     if execute_sql("DELETE FROM clientes WHERE id = %s", (id,)):
-        flash('Cliente excluído com sucesso!')
+        flash('✅ Cliente excluído com sucesso!')
     else:
-        flash('Erro ao excluir cliente')
+        flash('❌ Erro ao excluir cliente')
     return redirect(url_for('crm'))
 
 # ==========================================
@@ -1259,62 +1689,12 @@ def cliente_delete(id):
 @app.route('/reorganizar_pedidos')
 @login_required
 def reorganizar_pedidos():
-    """Rota para reorganizar números de pedido manualmente"""
     try:
         reorganizar_numeros_pedido()
         flash('✅ Números de pedido reorganizados com sucesso!')
     except Exception as e:
         flash(f'❌ Erro ao reorganizar: {str(e)}')
     return redirect(url_for('index'))
-
-# ==========================================
-# ROTA DE TESTE DE ESTOQUE
-# ==========================================
-
-@app.route('/teste/estoque/<string:produto_id>')
-@login_required
-def teste_estoque(produto_id):
-    produto = query_one("SELECT * FROM produtos WHERE id = %s", (produto_id,))
-    if not produto:
-        return f"❌ Produto {produto_id} não encontrado!"
-    
-    movimentacoes = query_all("""
-        SELECT * FROM movimentacoes_estoque 
-        WHERE produto_id = %s 
-        ORDER BY data_movimentacao DESC 
-        LIMIT 20
-    """, (produto_id,))
-    
-    html = f"""
-    <h1>📦 Teste de Estoque - {produto['nome']}</h1>
-    <p><strong>ID:</strong> {produto['id']}</p>
-    <p><strong>Estoque Atual:</strong> {produto['estoque_atual']} {produto['unidade'] or 'UN'}</p>
-    <p><strong>Estoque Mínimo:</strong> {produto['estoque_minimo']}</p>
-    
-    <h2>📊 Últimas Movimentações:</h2>
-    <table border="1" cellpadding="5">
-        <tr>
-            <th>Data</th>
-            <th>Tipo</th>
-            <th>Origem</th>
-            <th>Quantidade</th>
-            <th>Descrição</th>
-        </tr>
-    """
-    
-    for m in movimentacoes:
-        html += f"""
-        <tr>
-            <td>{m['data_movimentacao']}</td>
-            <td>{m['tipo']}</td>
-            <td>{m['origem']}</td>
-            <td>{m['quantidade']}</td>
-            <td>{m['descricao']}</td>
-        </tr>
-        """
-    
-    html += "</table>"
-    return html
 
 # ==========================================
 # RODAR APP
