@@ -98,7 +98,7 @@
                                 <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarTransacao{{ transacao.id }}" title="Editar">
                                     <i class="bi bi-pencil"></i>
                                 </button>
-                                <form method="POST" action="{{ url_for('financeiro_delete', id=transacao.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir esta transação?')">
+                                <form method="POST" action="{{ url_for('financeiro_delete', id=transacao.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir esta transação? O estoque será revertido.')">
                                     <button type="submit" class="btn btn-outline-danger" title="Excluir">
                                         <i class="bi bi-trash"></i>
                                     </button>
@@ -130,7 +130,7 @@
                 <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nova Transação</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST">
+            <form method="POST" id="formNovaTransacao">
                 <div class="modal-body">
                     <!-- REGRAS -->
                     <div class="alert alert-info">
@@ -218,7 +218,7 @@
                         <div class="col-12 col-md-6" id="produtoDiv" style="display: none;">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Produto</label>
-                                <select name="produto_id" class="form-select">
+                                <select name="produto_id" class="form-select" id="produtoSelect">
                                     <option value="">Selecione um produto...</option>
                                     {% for produto in produtos %}
                                     <option value="{{ produto.id }}">{{ produto.nome }} (Estoque: {{ produto.estoque_atual }})</option>
@@ -232,10 +232,13 @@
                         <div class="col-12 col-md-6" id="quantidadeDiv" style="display: none;">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Quantidade</label>
-                                <input type="number" name="quantidade" class="form-control" min="0" value="1">
+                                <input type="number" name="quantidade" class="form-control" id="quantidadeInput" min="0" value="1">
                                 <small class="text-muted">Quantidade vendida</small>
                             </div>
                         </div>
+
+                        <!-- Mensagem de validação de estoque -->
+                        <div id="mensagemEstoque"></div>
 
                         <!-- VALOR -->
                         <div class="col-12 col-md-6">
@@ -248,7 +251,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary-custom">Registrar</button>
+                    <button type="submit" class="btn btn-primary-custom" id="btnSalvarTransacao">Registrar</button>
                 </div>
             </form>
         </div>
@@ -266,7 +269,7 @@
                 <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Transação</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{ url_for('financeiro_editar', id=transacao.id) }}">
+            <form method="POST" action="{{ url_for('financeiro_editar', id=transacao.id) }}" class="formEditarTransacao">
                 <div class="modal-body">
                     <div class="row">
                         <!-- Tipo -->
@@ -339,7 +342,7 @@
                                     <option value="">Selecione...</option>
                                     {% for produto in produtos %}
                                     <option value="{{ produto.id }}" {% if transacao.produto_id == produto.id %}selected{% endif %}>
-                                        {{ produto.nome }}
+                                        {{ produto.nome }} (Estoque: {{ produto.estoque_atual }})
                                     </option>
                                     {% endfor %}
                                 </select>
@@ -394,8 +397,46 @@
             produtoDiv.style.display = 'none';
             quantidadeDiv.style.display = 'none';
             clienteDiv.style.display = 'none';
+            document.getElementById('mensagemEstoque').innerHTML = '';
         }
     }
+
+    // ===== VALIDAÇÃO DE ESTOQUE =====
+    document.addEventListener('DOMContentLoaded', function() {
+        // Elementos
+        var produtoSelect = document.getElementById('produtoSelect');
+        var quantidadeInput = document.getElementById('quantidadeInput');
+        var mensagemEstoque = document.getElementById('mensagemEstoque');
+        var btnSalvar = document.getElementById('btnSalvarTransacao');
+        
+        if (produtoSelect && quantidadeInput && mensagemEstoque) {
+            function verificarEstoque() {
+                var option = produtoSelect.options[produtoSelect.selectedIndex];
+                if (option && option.value) {
+                    var texto = option.text;
+                    var match = texto.match(/Estoque:\s*(\d+)/);
+                    if (match) {
+                        var estoque = parseInt(match[1]);
+                        var quantidade = parseInt(quantidadeInput.value) || 0;
+                        
+                        if (quantidade > estoque) {
+                            mensagemEstoque.innerHTML = '<div class="alert alert-danger">⚠️ Quantidade (' + quantidade + ') maior que o estoque disponível (' + estoque + ')</div>';
+                            if (btnSalvar) btnSalvar.disabled = true;
+                        } else if (quantidade > 0 && quantidade <= estoque) {
+                            mensagemEstoque.innerHTML = '<div class="alert alert-success">✅ Estoque suficiente: ' + estoque + ' unidades disponíveis</div>';
+                            if (btnSalvar) btnSalvar.disabled = false;
+                        } else {
+                            mensagemEstoque.innerHTML = '';
+                            if (btnSalvar) btnSalvar.disabled = false;
+                        }
+                    }
+                }
+            }
+            
+            produtoSelect.addEventListener('change', verificarEstoque);
+            quantidadeInput.addEventListener('input', verificarEstoque);
+        }
+    });
 
     // ===== CATEGORIA NOVA =====
     document.getElementById('categoriaSelect').addEventListener('change', function() {
