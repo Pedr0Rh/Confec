@@ -9,15 +9,9 @@ import socket
 import urllib.parse
 import traceback
 import io
-import base64
-from datetime import datetime
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import numpy as np
 
 # ==========================================
-# IMPORTAÇÕES PARA PDF
+# IMPORTAÇÕES PARA PDF (APENAS REPORTLAB)
 # ==========================================
 
 from reportlab.lib.pagesizes import A4, landscape
@@ -303,11 +297,11 @@ def reorganizar_numeros_pedido():
         print(f"❌ Erro ao reorganizar números: {e}")
 
 # ==========================================
-# FUNÇÃO PARA GERAR RELATÓRIO PDF
+# FUNÇÃO PARA GERAR RELATÓRIO PDF (APENAS REPORTLAB)
 # ==========================================
 
 def gerar_relatorio_pdf():
-    """Gera um relatório completo em PDF com gráficos e tabelas"""
+    """Gera um relatório completo em PDF com gráficos e tabelas usando apenas ReportLab"""
     
     dados = {
         'resumo': query_one("""
@@ -329,8 +323,7 @@ def gerar_relatorio_pdf():
             SELECT 
                 TO_CHAR(DATE(data), 'DD/MM') AS dia,
                 COUNT(*) AS quantidade,
-                COALESCE(SUM(valor), 0) AS total,
-                COALESCE(SUM(quantidade), 0) AS itens_vendidos
+                COALESCE(SUM(valor), 0) AS total
             FROM transacoes_financeiras
             WHERE tipo = 'entrada'
               AND data >= (CURRENT_DATE - INTERVAL '29 days')
@@ -471,30 +464,33 @@ def gerar_relatorio_pdf():
     story.append(resumo_table)
     story.append(Spacer(1, 6*mm))
     
-    # 2. VENDAS POR DIA (GRÁFICO)
+    # 2. GRÁFICO DE VENDAS POR DIA (REPORTLAB)
     story.append(Paragraph("2. VENDAS POR DIA (ÚLTIMOS 30 DIAS)", styles['Heading2']))
     story.append(Spacer(1, 3*mm))
     
     vendas_data = dados['vendas_por_dia']
     if vendas_data:
-        plt.figure(figsize=(10, 4))
-        dias = [v['dia'] for v in vendas_data]
-        valores = [float(v['total']) for v in vendas_data]
-        
-        plt.bar(dias, valores, color='#3498db', alpha=0.7)
-        plt.title('Vendas por Dia', fontsize=12, fontweight='bold')
-        plt.xlabel('Dia', fontsize=10)
-        plt.ylabel('Valor (R$)', fontsize=10)
-        plt.xticks(rotation=45, ha='right', fontsize=8)
-        plt.tight_layout()
-        
-        img_buffer = io.BytesIO()
-        plt.savefig(img_buffer, format='png', dpi=100, bbox_inches='tight')
-        plt.close()
-        img_buffer.seek(0)
-        
-        img = Image(img_buffer, width=160*mm, height=60*mm)
-        story.append(img)
+        try:
+            drawing = Drawing(400, 200)
+            bc = VerticalBarChart()
+            bc.x = 50
+            bc.y = 50
+            bc.width = 300
+            bc.height = 120
+            bc.data = [[float(v['total']) for v in vendas_data]]
+            bc.categoryAxis.categoryNames = [v['dia'] for v in vendas_data]
+            bc.categoryAxis.labels.fontSize = 7
+            bc.categoryAxis.labels.angle = 45
+            bc.valueAxis.valueMin = 0
+            max_val = max([float(v['total']) for v in vendas_data]) * 1.2
+            bc.valueAxis.valueMax = max_val if max_val > 0 else 100
+            bc.valueAxis.labelTextFormat = 'R$ %s'
+            bc.valueAxis.labels.fontSize = 8
+            bc.bars[0].fillColor = colors.HexColor('#3498db')
+            drawing.add(bc)
+            story.append(drawing)
+        except Exception as e:
+            story.append(Paragraph(f"Erro ao gerar gráfico: {str(e)}", styles['Normal']))
         story.append(Spacer(1, 6*mm))
     else:
         story.append(Paragraph("Nenhuma venda registrada nos últimos 30 dias.", styles['Normal']))
