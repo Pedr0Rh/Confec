@@ -228,7 +228,33 @@ def index():
             'etapa': etapa['nome'],
             'total': total['total'] if total else 0
         })
-    
+
+    # Top Clientes (por vendas registradas em transacoes_financeiras)
+    top_clientes = query_all("""
+        SELECT c.nome,
+               COUNT(t.id) AS total_vendas,
+               COALESCE(SUM(t.valor), 0) AS total_gasto,
+               COALESCE(SUM(t.quantidade), 0) AS total_produtos
+        FROM clientes c
+        JOIN transacoes_financeiras t ON t.cliente_id = c.id
+        WHERE t.tipo = 'entrada'
+        GROUP BY c.id, c.nome
+        ORDER BY total_gasto DESC
+        LIMIT 5
+    """) or []
+
+    # Vendas dos últimos 7 dias
+    vendas_por_dia = query_all("""
+        SELECT DATE(data) AS dia,
+               COUNT(*) AS quantidade,
+               COALESCE(SUM(valor), 0) AS total
+        FROM transacoes_financeiras
+        WHERE tipo = 'entrada'
+          AND data >= (CURRENT_DATE - INTERVAL '6 days')
+        GROUP BY DATE(data)
+        ORDER BY dia DESC
+    """) or []
+
     return render_template('index.html',
                          total_colaboradores=stats['total_colaboradores'] if stats else 0,
                          total_producoes=stats['total_producoes'] if stats else 0,
@@ -238,7 +264,10 @@ def index():
                          entradas=entradas,
                          saidas=saidas,
                          saldo=entradas - saidas,
-                         producao_por_etapa=producao_por_etapa)
+                         producao_por_etapa=producao_por_etapa,
+                         top_clientes=top_clientes,
+                         vendas_por_dia=vendas_por_dia)
+
 
 # ==========================================
 # ESTOQUE
