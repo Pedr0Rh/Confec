@@ -290,18 +290,7 @@ def testdb():
         return f"❌ Erro: {str(e)}", 500
 
 # ==========================================
-# GERAR NÚMERO DO PEDIDO VIA AJAX
-# ==========================================
-
-@app.route('/gerar_numero_pedido')
-@login_required
-def gerar_numero_pedido_ajax():
-    """Retorna o próximo número de pedido via JSON"""
-    numero = gerar_numero_pedido()
-    return jsonify({'numero': numero})
-
-# ==========================================
-# LOGIN
+# LOGIN (DEFINIDO ANTES DE QUALQUER ROTA COM @login_required)
 # ==========================================
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -347,6 +336,17 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+# ==========================================
+# GERAR NÚMERO DO PEDIDO VIA AJAX
+# ==========================================
+
+@app.route('/gerar_numero_pedido')
+@login_required
+def gerar_numero_pedido_ajax():
+    """Retorna o próximo número de pedido via JSON"""
+    numero = gerar_numero_pedido()
+    return jsonify({'numero': numero})
 
 # ==========================================
 # INDEX / DASHBOARD
