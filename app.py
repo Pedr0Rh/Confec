@@ -153,28 +153,108 @@ def execute_sql(sql, params=None):
         return False
 
 # ==========================================
-# FUNÇÃO PARA GERAR NÚMERO DO PEDIDO
+# FUNÇÃO PARA GERAR NÚMERO DO PEDIDO (SEM LACUNAS)
 # ==========================================
 
 def gerar_numero_pedido():
-    """Gera um número de pedido sequencial no formato PED-YYYY-XXXX"""
+    """Gera um número de pedido sequencial sem lacunas"""
     ano = datetime.now().year
-    ultimo = query_one("""
-        SELECT numero_pedido FROM transacoes_financeiras 
-        WHERE numero_pedido LIKE %s 
-        ORDER BY numero_pedido DESC LIMIT 1
-    """, (f'PED-{ano}-%',))
     
-    if ultimo and ultimo['numero_pedido']:
-        partes = ultimo['numero_pedido'].split('-')
-        if len(partes) == 3:
-            try:
-                num = int(partes[2]) + 1
-                return f'PED-{ano}-{num:04d}'
-            except:
-                pass
+    # Buscar TODOS os números de pedido do ano (de ambas as tabelas)
+    pedidos = query_all("""
+        SELECT numero_pedido FROM (
+            SELECT numero_pedido FROM transacoes_financeiras 
+            WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
+            UNION ALL
+            SELECT numero_pedido FROM producoes 
+            WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
+        ) AS todos_pedidos
+        ORDER BY numero_pedido
+    """, (f'PED-{ano}-%', f'PED-{ano}-%'))
     
-    return f'PED-{ano}-0001'
+    # Extrair os números sequenciais
+    numeros = []
+    for p in pedidos:
+        if p and p['numero_pedido']:
+            partes = p['numero_pedido'].split('-')
+            if len(partes) == 3:
+                try:
+                    numeros.append(int(partes[2]))
+                except:
+                    pass
+    
+    # Se não houver pedidos, começar do 1
+    if not numeros:
+        return f'PED-{ano}-0001'
+    
+    # Ordenar e encontrar a primeira lacuna
+    numeros.sort()
+    proximo = 1
+    for num in numeros:
+        if num == proximo:
+            proximo += 1
+        else:
+            break
+    
+    return f'PED-{ano}-{proximo:04d}'
+
+# ==========================================
+# FUNÇÃO PARA REORGANIZAR NÚMEROS DE PEDIDO
+# ==========================================
+
+def reorganizar_numeros_pedido():
+    """Reorganiza os números de pedido para eliminar lacunas"""
+    ano = datetime.now().year
+    
+    # Buscar todos os pedidos do ano em ordem de criação
+    pedidos = query_all("""
+        SELECT id, numero_pedido, 'transacao' as tipo FROM transacoes_financeiras 
+        WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
+        UNION ALL
+        SELECT id, numero_pedido, 'producao' as tipo FROM producoes 
+        WHERE numero_pedido LIKE %s AND numero_pedido IS NOT NULL
+        ORDER BY numero_pedido
+    """, (f'PED-{ano}-%', f'PED-{ano}-%'))
+    
+    if not pedidos:
+        return
+    
+    conn = get_db_connection()
+    if not conn:
+        return
+    
+    try:
+        cur = conn.cursor()
+        
+        # Reorganizar sequencialmente
+        novo_num = 1
+        for pedido in pedidos:
+            novo_pedido = f'PED-{ano}-{novo_num:04d}'
+            novo_num += 1
+            
+            # Atualizar na tabela correta
+            if pedido['tipo'] == 'transacao':
+                cur.execute("""
+                    UPDATE transacoes_financeiras 
+                    SET numero_pedido = %s 
+                    WHERE id = %s
+                """, (novo_pedido, pedido['id']))
+            else:
+                cur.execute("""
+                    UPDATE producoes 
+                    SET numero_pedido = %s 
+                    WHERE id = %s
+                """, (novo_pedido, pedido['id']))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"✅ Números de pedido reorganizados! Total: {len(pedidos)}")
+        
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        print(f"❌ Erro ao reorganizar números: {e}")
 
 # ==========================================
 # ROTA DE HEALTHCHECK
@@ -210,40 +290,15 @@ def testdb():
         return f"❌ Erro: {str(e)}", 500
 
 # ==========================================
-# ROTA DE DIAGNÓSTICO
+# GERAR NÚMERO DO PEDIDO VIA AJAX
 # ==========================================
 
-@app.route('/debug')
-def debug():
-    html = "<h1>🔍 Diagnóstico</h1>"
-    html += f"<p><strong>DATABASE_URL:</strong> {'Configurada' if DATABASE_URL else 'NÃO CONFIGURADA'}</p>"
-    
-    if DATABASE_URL:
-        try:
-            parsed = urllib.parse.urlparse(DATABASE_URL)
-            host = parsed.hostname
-            try:
-                ip = socket.gethostbyname(host)
-                html += f"<p><strong>Host resolvido:</strong> {host} → {ip}</p>"
-            except:
-                html += f"<p><strong>Host:</strong> {host}</p>"
-            html += f"<p><strong>Porta:</strong> {parsed.port}</p>"
-            html += f"<p><strong>Database:</strong> {parsed.path[1:]}</p>"
-            html += f"<p><strong>User:</strong> {parsed.username}</p>"
-        except Exception as e:
-            html += f"<p><strong>Erro ao parsear URL:</strong> {e}</p>"
-    
-    try:
-        conn = get_db_connection()
-        if conn:
-            html += "<p style='color:green'>✅ Conexão com banco OK!</p>"
-            conn.close()
-        else:
-            html += "<p style='color:red'>❌ Falha na conexão!</p>"
-    except Exception as e:
-        html += f"<p style='color:red'>❌ Erro: {e}</p>"
-    
-    return html
+@app.route('/gerar_numero_pedido')
+@login_required
+def gerar_numero_pedido_ajax():
+    """Retorna o próximo número de pedido via JSON"""
+    numero = gerar_numero_pedido()
+    return jsonify({'numero': numero})
 
 # ==========================================
 # LOGIN
@@ -294,7 +349,7 @@ def login_required(f):
     return decorated_function
 
 # ==========================================
-# INDEX
+# INDEX / DASHBOARD
 # ==========================================
 
 @app.route('/dashboard')
@@ -323,6 +378,7 @@ def index():
             'total': total['total'] if total else 0
         })
 
+    # TOP CLIENTES
     top_clientes = query_all("""
         SELECT 
             c.nome,
@@ -337,6 +393,7 @@ def index():
         LIMIT 5
     """) or []
 
+    # VENDAS ÚLTIMOS 7 DIAS
     vendas_por_dia = query_all("""
         SELECT 
             TO_CHAR(DATE(data), 'DD/MM') AS dia,
@@ -533,22 +590,26 @@ def estoque_ajustar(produto_id):
 @login_required
 def producao():
     if request.method == 'POST':
+        # Gerar número do pedido automaticamente
+        numero_pedido = gerar_numero_pedido()
+        
         sql = """
-            INSERT INTO producoes (pedido, etapa_id, quantidade_pecas, colaborador_id, produto_id) 
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO producoes (pedido, numero_pedido, etapa_id, quantidade_pecas, colaborador_id, produto_id) 
+            VALUES (%s, %s, %s, %s, %s, %s)
         """
         if execute_sql(sql, (
-            request.form['pedido'],
+            request.form['pedido'] or numero_pedido,
+            numero_pedido,
             request.form['etapa_id'],
             int(request.form['quantidade']),
             request.form.get('colaborador_id') or None,
             request.form.get('produto_id') or None
         )):
-            flash('Produção adicionada com sucesso!')
+            flash(f'✅ Produção adicionada com sucesso! Pedido: {numero_pedido}')
         else:
-            flash('Erro ao adicionar produção')
+            flash('❌ Erro ao adicionar produção')
         return redirect(url_for('producao'))
-
+    
     etapas = query_all("SELECT * FROM etapas_producao ORDER BY ordem")
     colaboradores = query_all("SELECT * FROM colaboradores ORDER BY nome")
     produtos = query_all("SELECT * FROM produtos WHERE status = 'ativo' ORDER BY nome")
@@ -560,7 +621,7 @@ def producao():
         LEFT JOIN produtos pr ON p.produto_id = pr.id
         ORDER BY p.data_entrada DESC
     """)
-
+    
     return render_template('producao.html', etapas=etapas, producoes=producoes, colaboradores=colaboradores, produtos=produtos)
 
 @app.route('/producao/editar/<string:id>', methods=['POST'])
@@ -580,18 +641,33 @@ def producao_editar(id):
         request.form.get('produto_id') or None,
         id
     )):
-        flash('Produção atualizada com sucesso!')
+        flash('✅ Produção atualizada com sucesso!')
     else:
-        flash('Erro ao atualizar produção')
+        flash('❌ Erro ao atualizar produção')
     return redirect(url_for('producao'))
 
 @app.route('/producao/delete/<string:id>', methods=['POST'])
 @login_required
 def producao_delete(id):
+    # Buscar a produção antes de excluir
+    producao = query_one("SELECT * FROM producoes WHERE id = %s", (id,))
+    if not producao:
+        flash('Produção não encontrada')
+        return redirect(url_for('producao'))
+    
+    # Se já estiver finalizada, não pode excluir
+    if producao['finalizado']:
+        flash('⚠️ Não é possível excluir uma produção já finalizada!')
+        return redirect(url_for('producao'))
+    
+    # Excluir
     if execute_sql("DELETE FROM producoes WHERE id = %s", (id,)):
-        flash('Produção excluída com sucesso!')
+        # Reorganizar os números de pedido após a exclusão
+        reorganizar_numeros_pedido()
+        flash('✅ Produção excluída com sucesso! Números de pedido reorganizados.')
     else:
-        flash('Erro ao excluir produção')
+        flash('❌ Erro ao excluir produção')
+    
     return redirect(url_for('producao'))
 
 @app.route('/producao/finalizar/<string:id>', methods=['POST'])
@@ -616,23 +692,23 @@ def producao_finalizar(id):
                 execute_sql(sql_mov, (
                     producao['produto_id'],
                     producao['quantidade_pecas'],
-                    f'Produção finalizada - Pedido {producao["pedido"]}',
+                    f'Produção finalizada - Pedido {producao["numero_pedido"] or producao["pedido"]}',
                     id
                 ))
-            flash('Produção finalizada e estoque atualizado!')
+            flash('✅ Produção finalizada e estoque atualizado!')
         else:
-            flash('Produção finalizada!')
+            flash('✅ Produção finalizada!')
     else:
-        flash('Erro ao finalizar produção')
+        flash('❌ Erro ao finalizar produção')
     return redirect(url_for('producao'))
 
 @app.route('/producao/reativar/<string:id>', methods=['POST'])
 @login_required
 def producao_reativar(id):
     if execute_sql("UPDATE producoes SET finalizado = false, status = 'Em andamento' WHERE id = %s", (id,)):
-        flash('Produção reativada com sucesso!')
+        flash('✅ Produção reativada com sucesso!')
     else:
-        flash('Erro ao reativar produção')
+        flash('❌ Erro ao reativar produção')
     return redirect(url_for('producao'))
 
 # ==========================================
@@ -645,9 +721,9 @@ def colaboradores():
     if request.method == 'POST':
         sql = "INSERT INTO colaboradores (nome, funcao, telefone, observacao) VALUES (%s, %s, %s, %s)"
         if execute_sql(sql, (request.form['nome'], request.form['funcao'], request.form['telefone'], request.form['observacao'])):
-            flash('Colaborador cadastrado com sucesso!')
+            flash('✅ Colaborador cadastrado com sucesso!')
         else:
-            flash('Erro ao cadastrar colaborador')
+            flash('❌ Erro ao cadastrar colaborador')
         return redirect(url_for('colaboradores'))
 
     colaboradores = query_all("SELECT * FROM colaboradores ORDER BY nome")
@@ -662,9 +738,9 @@ def colaborador_editar(id):
         WHERE id = %s
     """
     if execute_sql(sql, (request.form['nome'], request.form['funcao'], request.form['telefone'], request.form['observacao'], id)):
-        flash('Colaborador atualizado com sucesso!')
+        flash('✅ Colaborador atualizado com sucesso!')
     else:
-        flash('Erro ao atualizar colaborador')
+        flash('❌ Erro ao atualizar colaborador')
     return redirect(url_for('colaboradores'))
 
 @app.route('/colaboradores/delete/<string:id>', methods=['POST'])
@@ -672,13 +748,13 @@ def colaborador_editar(id):
 def colaborador_delete(id):
     em_uso = query_one("SELECT COUNT(*) as total FROM producoes WHERE colaborador_id = %s", (id,))
     if em_uso and em_uso['total'] > 0:
-        flash('Não é possível excluir. Colaborador está vinculado a produções!')
+        flash('⚠️ Não é possível excluir. Colaborador está vinculado a produções!')
         return redirect(url_for('colaboradores'))
 
     if execute_sql("DELETE FROM colaboradores WHERE id = %s", (id,)):
-        flash('Colaborador excluído com sucesso!')
+        flash('✅ Colaborador excluído com sucesso!')
     else:
-        flash('Erro ao excluir colaborador')
+        flash('❌ Erro ao excluir colaborador')
     return redirect(url_for('colaboradores'))
 
 # ==========================================
@@ -699,8 +775,10 @@ def financeiro():
         valor = float(request.form['valor'])
         tipo = request.form['tipo']
         
+        # Gerar número do pedido automaticamente apenas para vendas
         numero_pedido = gerar_numero_pedido() if tipo == 'entrada' else None
 
+        # VALIDAÇÃO: Verificar estoque antes de registrar
         if tipo == 'entrada' and produto_id and quantidade > 0:
             produto_check = query_one("SELECT * FROM produtos WHERE id = %s", (produto_id,))
             if not produto_check:
@@ -713,12 +791,13 @@ def financeiro():
 
         conn = get_db_connection()
         if not conn:
-            flash('Erro de conexão com banco de dados')
+            flash('❌ Erro de conexão com banco de dados')
             return redirect(url_for('financeiro'))
 
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
 
+            # 1. Inserir a transação financeira com número do pedido
             sql_transacao = """
                 INSERT INTO transacoes_financeiras 
                 (tipo, categoria, descricao, valor, produto_id, quantidade, cliente_id, numero_pedido) 
@@ -728,6 +807,7 @@ def financeiro():
             cur.execute(sql_transacao, (tipo, categoria, request.form['descricao'], valor, produto_id, quantidade, cliente_id, numero_pedido))
             transacao_id = cur.fetchone()['id']
 
+            # 2. Se for uma VENDA (entrada) e tiver produto e quantidade
             if tipo == 'entrada' and produto_id and quantidade > 0:
                 cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (produto_id,))
                 produto = cur.fetchone()
@@ -770,6 +850,7 @@ def financeiro():
 
         return redirect(url_for('financeiro'))
 
+    # GET - mostrar página
     transacoes = query_all("""
         SELECT t.*, p.nome as produto_nome, c.nome as cliente_nome
         FROM transacoes_financeiras t
@@ -805,6 +886,7 @@ def financeiro():
                          produtos=produtos,
                          clientes=clientes)
 
+
 @app.route('/financeiro/editar/<string:id>', methods=['POST'])
 @login_required
 def financeiro_editar(id):
@@ -830,6 +912,7 @@ def financeiro_editar(id):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
+        # 1. Reverter alterações da transação original no estoque (se houver)
         if transacao_original['tipo'] == 'entrada' and transacao_original['produto_id'] and transacao_original['quantidade'] > 0:
             cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (transacao_original['produto_id'],))
             produto_original = cur.fetchone()
@@ -841,6 +924,7 @@ def financeiro_editar(id):
                     WHERE id = %s
                 """, (novo_estoque, transacao_original['produto_id']))
 
+        # 2. Atualizar a transação
         sql_update = """
             UPDATE transacoes_financeiras SET 
                 tipo = %s, categoria = %s, descricao = %s, 
@@ -858,6 +942,7 @@ def financeiro_editar(id):
             id
         ))
 
+        # 3. Aplicar nova alteração no estoque (se for venda)
         if novo_tipo == 'entrada' and novo_produto_id and nova_quantidade > 0:
             cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (novo_produto_id,))
             produto_novo = cur.fetchone()
@@ -893,6 +978,7 @@ def financeiro_editar(id):
 
     return redirect(url_for('financeiro'))
 
+
 @app.route('/financeiro/delete/<string:id>', methods=['POST'])
 @login_required
 def financeiro_delete(id):
@@ -927,11 +1013,15 @@ def financeiro_delete(id):
                 """, (transacao['produto_id'], transacao['quantidade'], f'Cancelamento de venda - {transacao["descricao"]}', id))
 
         cur.execute("DELETE FROM transacoes_financeiras WHERE id = %s", (id,))
-
+        
         conn.commit()
         cur.close()
         conn.close()
-        flash('✅ Transação excluída com sucesso! Estoque revertido.')
+        
+        # Reorganizar os números de pedido após a exclusão
+        reorganizar_numeros_pedido()
+        
+        flash('✅ Transação excluída com sucesso! Estoque revertido e números reorganizados.')
 
     except Exception as e:
         conn.rollback()
@@ -949,7 +1039,6 @@ def financeiro_delete(id):
 @app.route('/relatorio')
 @login_required
 def relatorio():
-    # Vendas por dia (últimos 7 dias)
     vendas_por_dia = query_all("""
         SELECT 
             TO_CHAR(DATE(data), 'DD/MM') AS dia,
@@ -962,7 +1051,6 @@ def relatorio():
         ORDER BY DATE(data) ASC
     """) or []
 
-    # Top 5 clientes
     top_clientes = query_all("""
         SELECT 
             c.nome,
@@ -977,7 +1065,6 @@ def relatorio():
         LIMIT 5
     """) or []
 
-    # Produtos mais vendidos
     produtos_mais_vendidos = query_all("""
         SELECT 
             p.nome,
@@ -991,7 +1078,6 @@ def relatorio():
         LIMIT 5
     """) or []
 
-    # Produtos em estoque (top 5)
     produtos_estoque = query_all("""
         SELECT nome, estoque_atual 
         FROM produtos 
@@ -1000,7 +1086,6 @@ def relatorio():
         LIMIT 5
     """) or []
 
-    # Últimas vendas (20)
     ultimas_vendas = query_all("""
         SELECT 
             t.*,
@@ -1014,7 +1099,6 @@ def relatorio():
         LIMIT 20
     """) or []
 
-    # Últimas movimentações (20)
     ultimas_movimentacoes = query_all("""
         SELECT 
             m.*,
@@ -1025,7 +1109,6 @@ def relatorio():
         LIMIT 20
     """) or []
 
-    # Totais
     total_vendas = query_one("SELECT COUNT(*) as total FROM transacoes_financeiras WHERE tipo = 'entrada'")
     total_faturamento = query_one("SELECT COALESCE(SUM(valor), 0) as total FROM transacoes_financeiras WHERE tipo = 'entrada'")
     total_clientes = query_one("SELECT COUNT(*) as total FROM clientes")
@@ -1168,6 +1251,21 @@ def cliente_delete(id):
     else:
         flash('Erro ao excluir cliente')
     return redirect(url_for('crm'))
+
+# ==========================================
+# ROTA PARA REORGANIZAR MANUALMENTE
+# ==========================================
+
+@app.route('/reorganizar_pedidos')
+@login_required
+def reorganizar_pedidos():
+    """Rota para reorganizar números de pedido manualmente"""
+    try:
+        reorganizar_numeros_pedido()
+        flash('✅ Números de pedido reorganizados com sucesso!')
+    except Exception as e:
+        flash(f'❌ Erro ao reorganizar: {str(e)}')
+    return redirect(url_for('index'))
 
 # ==========================================
 # ROTA DE TESTE DE ESTOQUE

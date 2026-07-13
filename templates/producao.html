@@ -16,7 +16,7 @@
             <table class="table table-hover">
                 <thead>
                     <tr>
-                        <th>Pedido</th>
+                        <th>Nº Pedido</th>
                         <th class="hide-mobile">Produto</th>
                         <th>Etapa</th>
                         <th class="hide-mobile">Responsável</th>
@@ -29,7 +29,9 @@
                 <tbody>
                     {% for producao in producoes %}
                     <tr class="{% if producao.finalizado %}table-success{% endif %}">
-                        <td><strong>{{ producao.pedido }}</strong></td>
+                        <td>
+                            <strong>{{ producao.numero_pedido or producao.pedido }}</strong>
+                        </td>
                         <td class="hide-mobile">
                             {% if producao.produto_nome %}
                                 <span class="badge bg-info">{{ producao.produto_nome }}</span>
@@ -75,14 +77,14 @@
                                 <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editarProducao{{ producao.id }}" title="Editar">
                                     <i class="bi bi-pencil"></i>
                                 </button>
+                                <button class="btn btn-danger" onclick="if(confirm('Tem certeza que deseja excluir? Os números serão reorganizados.')){document.getElementById('deleteForm{{ producao.id }}').submit()}" title="Excluir">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                                 {% else %}
                                 <button class="btn btn-warning" onclick="reativarProducao('{{ producao.id }}')" title="Reativar">
                                     <i class="bi bi-arrow-counterclockwise"></i>
                                 </button>
                                 {% endif %}
-                                <button class="btn btn-danger" onclick="if(confirm('Tem certeza?')){document.getElementById('deleteForm{{ producao.id }}').submit()}" title="Excluir">
-                                    <i class="bi bi-trash"></i>
-                                </button>
                             </div>
                             <form id="deleteForm{{ producao.id }}" method="POST" action="{{ url_for('producao_delete', id=producao.id) }}" style="display:none;"></form>
                         </td>
@@ -113,7 +115,14 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Número do Pedido</label>
-                        <input type="text" name="pedido" class="form-control" required>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-tag"></i></span>
+                            <input type="text" name="pedido" class="form-control" id="numeroPedidoInput" placeholder="Gerando automaticamente...">
+                            <button class="btn btn-outline-secondary" type="button" onclick="gerarNovoNumero()">
+                                <i class="bi bi-arrow-repeat"></i>
+                            </button>
+                        </div>
+                        <small class="text-muted">Será gerado automaticamente (PED-ANO-XXXX)</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Produto</label>
@@ -145,7 +154,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Quantidade</label>
-                        <input type="number" name="quantidade" class="form-control" required min="1">
+                        <input type="number" name="quantidade" class="form-control" required min="1" value="1">
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -163,7 +172,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Produção</h5>
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Produção - {{ producao.numero_pedido or producao.pedido }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form method="POST" action="{{ url_for('producao_editar', id=producao.id) }}">
@@ -171,6 +180,7 @@
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Pedido</label>
                         <input type="text" name="pedido" class="form-control" value="{{ producao.pedido }}" required>
+                        <small class="text-muted">Nº Pedido: <strong>{{ producao.numero_pedido or 'Não gerado' }}</strong></small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Produto</label>
@@ -178,7 +188,7 @@
                             <option value="">Selecione...</option>
                             {% for produto in produtos %}
                             <option value="{{ produto.id }}" {% if producao.produto_id == produto.id %}selected{% endif %}>
-                                {{ produto.nome }}
+                                {{ produto.nome }} (Estoque: {{ produto.estoque_atual }})
                             </option>
                             {% endfor %}
                         </select>
@@ -221,7 +231,7 @@
 
 <script>
     function finalizarProducao(id) {
-        if(confirm('Finalizar esta produção? Isso dará entrada no estoque.')) {
+        if(confirm('✅ Finalizar esta produção?\n\nIsso dará entrada no estoque automaticamente.')) {
             var form = document.createElement('form');
             form.method = 'POST';
             form.action = '/producao/finalizar/' + id;
@@ -231,7 +241,7 @@
     }
     
     function reativarProducao(id) {
-        if(confirm('Reativar esta produção?')) {
+        if(confirm('🔄 Reativar esta produção?')) {
             var form = document.createElement('form');
             form.method = 'POST';
             form.action = '/producao/reativar/' + id;
@@ -239,5 +249,31 @@
             form.submit();
         }
     }
+
+    function gerarNovoNumero() {
+        fetch('/gerar_numero_pedido')
+            .then(response => response.json())
+            .then(data => {
+                if (data.numero) {
+                    document.getElementById('numeroPedidoInput').value = data.numero;
+                    document.getElementById('numeroPedidoInput').placeholder = '';
+                }
+            })
+            .catch(() => {});
+    }
+
+    // Preencher automaticamente o número do pedido ao abrir o modal
+    document.addEventListener('DOMContentLoaded', function() {
+        var modal = document.getElementById('novaProducao');
+        if (modal) {
+            modal.addEventListener('show.bs.modal', function() {
+                var input = document.getElementById('numeroPedidoInput');
+                if (input && !input.value) {
+                    input.placeholder = 'Gerando...';
+                    gerarNovoNumero();
+                }
+            });
+        }
+    });
 </script>
 {% endblock %}
