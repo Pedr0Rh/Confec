@@ -233,7 +233,6 @@
             z-index: 0;
         }
         .main-content > *:not(.modal):not(.modal-backdrop):not(.offcanvas):not(.offcanvas-backdrop) { position: relative; z-index: 1; }
-        /* Garante que modais fiquem acima de tudo (evita travamento por backdrop) */
         .modal { z-index: 1060 !important; }
         .modal-backdrop { z-index: 1055 !important; }
         .offcanvas { z-index: 1060 !important; }
@@ -737,6 +736,10 @@
                 </a>
                 <a class="nav-link {% if request.endpoint == 'crm' %}active{% endif %}" href="{{ url_for('crm') }}">
                     <i class="bi bi-person-lines-fill"></i> CRM
+                </a>
+                <!-- ===== NOVO LINK RELATÓRIO ===== -->
+                <a class="nav-link {% if request.endpoint == 'relatorio' %}active{% endif %}" href="{{ url_for('relatorio') }}">
+                    <i class="bi bi-file-earmark-bar-graph"></i> Relatório
                 </a>
             </nav>
 

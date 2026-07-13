@@ -35,7 +35,6 @@ def get_db_connection():
 
         print("🔄 Conectando ao banco...")
 
-        # Tentativa com parâmetros
         try:
             parsed = urllib.parse.urlparse(DATABASE_URL)
             
@@ -57,7 +56,6 @@ def get_db_connection():
         except Exception as e1:
             print(f"⚠️ Tentativa 1 falhou: {e1}")
             
-            # Tentativa com hostaddr
             try:
                 parsed = urllib.parse.urlparse(DATABASE_URL)
                 host = parsed.hostname
@@ -81,7 +79,6 @@ def get_db_connection():
             except Exception as e2:
                 print(f"⚠️ Tentativa 2 falhou: {e2}")
                 
-                # Tentativa com URL direta
                 try:
                     conn = psycopg2.connect(
                         DATABASE_URL,
@@ -154,6 +151,30 @@ def execute_sql(sql, params=None):
         conn.rollback()
         conn.close()
         return False
+
+# ==========================================
+# FUNÇÃO PARA GERAR NÚMERO DO PEDIDO
+# ==========================================
+
+def gerar_numero_pedido():
+    """Gera um número de pedido sequencial no formato PED-YYYY-XXXX"""
+    ano = datetime.now().year
+    ultimo = query_one("""
+        SELECT numero_pedido FROM transacoes_financeiras 
+        WHERE numero_pedido LIKE %s 
+        ORDER BY numero_pedido DESC LIMIT 1
+    """, (f'PED-{ano}-%',))
+    
+    if ultimo and ultimo['numero_pedido']:
+        partes = ultimo['numero_pedido'].split('-')
+        if len(partes) == 3:
+            try:
+                num = int(partes[2]) + 1
+                return f'PED-{ano}-{num:04d}'
+            except:
+                pass
+    
+    return f'PED-{ano}-0001'
 
 # ==========================================
 # ROTA DE HEALTHCHECK
@@ -302,6 +323,32 @@ def index():
             'total': total['total'] if total else 0
         })
 
+    top_clientes = query_all("""
+        SELECT 
+            c.nome,
+            COUNT(t.id) AS total_vendas,
+            COALESCE(SUM(t.valor), 0) AS total_gasto,
+            COALESCE(SUM(t.quantidade), 0) AS total_produtos
+        FROM clientes c
+        JOIN transacoes_financeiras t ON t.cliente_id = c.id
+        WHERE t.tipo = 'entrada'
+        GROUP BY c.id, c.nome
+        ORDER BY total_gasto DESC
+        LIMIT 5
+    """) or []
+
+    vendas_por_dia = query_all("""
+        SELECT 
+            TO_CHAR(DATE(data), 'DD/MM') AS dia,
+            COUNT(*) AS quantidade,
+            COALESCE(SUM(valor), 0) AS total
+        FROM transacoes_financeiras
+        WHERE tipo = 'entrada'
+          AND data >= (CURRENT_DATE - INTERVAL '6 days')
+        GROUP BY DATE(data)
+        ORDER BY DATE(data) ASC
+    """) or []
+
     return render_template('index.html',
                          total_colaboradores=stats['total_colaboradores'] if stats else 0,
                          total_producoes=stats['total_producoes'] if stats else 0,
@@ -311,7 +358,9 @@ def index():
                          entradas=entradas,
                          saidas=saidas,
                          saldo=entradas - saidas,
-                         producao_por_etapa=producao_por_etapa)
+                         producao_por_etapa=producao_por_etapa,
+                         top_clientes=top_clientes,
+                         vendas_por_dia=vendas_por_dia)
 
 # ==========================================
 # ESTOQUE
@@ -633,7 +682,7 @@ def colaborador_delete(id):
     return redirect(url_for('colaboradores'))
 
 # ==========================================
-# FINANCEIRO (COM BAIXA NO ESTOQUE)
+# FINANCEIRO (COM BAIXA NO ESTOQUE E NÚMERO DO PEDIDO)
 # ==========================================
 
 @app.route('/financeiro', methods=['GET', 'POST'])
@@ -649,8 +698,9 @@ def financeiro():
         quantidade = int(request.form.get('quantidade', 0) or 0)
         valor = float(request.form['valor'])
         tipo = request.form['tipo']
+        
+        numero_pedido = gerar_numero_pedido() if tipo == 'entrada' else None
 
-        # VALIDAÇÃO: Verificar estoque antes de registrar
         if tipo == 'entrada' and produto_id and quantidade > 0:
             produto_check = query_one("SELECT * FROM produtos WHERE id = %s", (produto_id,))
             if not produto_check:
@@ -661,7 +711,6 @@ def financeiro():
                 flash(f'❌ Estoque insuficiente! Disponível: {produto_check["estoque_atual"]}, Solicitado: {quantidade}')
                 return redirect(url_for('financeiro'))
 
-        # ===== INÍCIO DA TRANSAÇÃO MANUAL =====
         conn = get_db_connection()
         if not conn:
             flash('Erro de conexão com banco de dados')
@@ -670,19 +719,16 @@ def financeiro():
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
 
-            # 1. Inserir a transação financeira
             sql_transacao = """
                 INSERT INTO transacoes_financeiras 
-                (tipo, categoria, descricao, valor, produto_id, quantidade, cliente_id) 
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (tipo, categoria, descricao, valor, produto_id, quantidade, cliente_id, numero_pedido) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """
-            cur.execute(sql_transacao, (tipo, categoria, request.form['descricao'], valor, produto_id, quantidade, cliente_id))
+            cur.execute(sql_transacao, (tipo, categoria, request.form['descricao'], valor, produto_id, quantidade, cliente_id, numero_pedido))
             transacao_id = cur.fetchone()['id']
 
-            # 2. Se for uma VENDA (entrada) e tiver produto e quantidade
             if tipo == 'entrada' and produto_id and quantidade > 0:
-                # Buscar produto atual com FOR UPDATE (trava a linha)
                 cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (produto_id,))
                 produto = cur.fetchone()
 
@@ -690,33 +736,30 @@ def financeiro():
                     estoque_atual = produto['estoque_atual']
                     novo_estoque = estoque_atual - quantidade
 
-                    # NUNCA deixa negativo
                     if novo_estoque < 0:
                         novo_estoque = 0
                         flash('⚠️ Aviso: Estoque ficaria negativo. Ajustado para 0.', 'warning')
 
-                    # Atualizar estoque do produto
                     cur.execute("""
                         UPDATE produtos 
                         SET estoque_atual = %s, updated_at = NOW() 
                         WHERE id = %s
                     """, (novo_estoque, produto_id))
 
-                    # Registrar movimentação de estoque (saída)
                     cur.execute("""
                         INSERT INTO movimentacoes_estoque 
                         (produto_id, tipo, origem, quantidade, descricao, referencia_id) 
                         VALUES (%s, 'saida', 'venda', %s, %s, %s)
-                    """, (produto_id, quantidade, f'Venda - {request.form["descricao"]}', transacao_id))
+                    """, (produto_id, quantidade, f'Venda - {request.form["descricao"]} - Pedido: {numero_pedido}', transacao_id))
 
-                    flash(f'✅ Venda registrada! Estoque: {estoque_atual} → {novo_estoque} {produto["unidade"] or "UN"}', 'success')
+                    flash(f'✅ Venda registrada! Pedido: {numero_pedido} | Estoque: {estoque_atual} → {novo_estoque} {produto["unidade"] or "UN"}', 'success')
 
             conn.commit()
             cur.close()
             conn.close()
 
             if tipo != 'entrada' or not produto_id or quantidade == 0:
-                flash('✅ Transação registrada com sucesso!')
+                flash(f'✅ Transação registrada com sucesso!{" Pedido: " + numero_pedido if numero_pedido else ""}')
 
         except Exception as e:
             conn.rollback()
@@ -727,7 +770,6 @@ def financeiro():
 
         return redirect(url_for('financeiro'))
 
-    # GET - mostrar página
     transacoes = query_all("""
         SELECT t.*, p.nome as produto_nome, c.nome as cliente_nome
         FROM transacoes_financeiras t
@@ -763,11 +805,9 @@ def financeiro():
                          produtos=produtos,
                          clientes=clientes)
 
-
 @app.route('/financeiro/editar/<string:id>', methods=['POST'])
 @login_required
 def financeiro_editar(id):
-    # Buscar transação original
     transacao_original = query_one("SELECT * FROM transacoes_financeiras WHERE id = %s", (id,))
     if not transacao_original:
         flash('Transação não encontrada')
@@ -790,9 +830,7 @@ def financeiro_editar(id):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # 1. Reverter alterações da transação original no estoque (se houver)
         if transacao_original['tipo'] == 'entrada' and transacao_original['produto_id'] and transacao_original['quantidade'] > 0:
-            # Devolver ao estoque (entrada)
             cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (transacao_original['produto_id'],))
             produto_original = cur.fetchone()
             if produto_original:
@@ -803,7 +841,6 @@ def financeiro_editar(id):
                     WHERE id = %s
                 """, (novo_estoque, transacao_original['produto_id']))
 
-        # 2. Atualizar a transação
         sql_update = """
             UPDATE transacoes_financeiras SET 
                 tipo = %s, categoria = %s, descricao = %s, 
@@ -821,7 +858,6 @@ def financeiro_editar(id):
             id
         ))
 
-        # 3. Aplicar nova alteração no estoque (se for venda)
         if novo_tipo == 'entrada' and novo_produto_id and nova_quantidade > 0:
             cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (novo_produto_id,))
             produto_novo = cur.fetchone()
@@ -837,7 +873,6 @@ def financeiro_editar(id):
                     WHERE id = %s
                 """, (novo_estoque, novo_produto_id))
 
-                # Registrar movimentação
                 cur.execute("""
                     INSERT INTO movimentacoes_estoque 
                     (produto_id, tipo, origem, quantidade, descricao, referencia_id) 
@@ -858,11 +893,9 @@ def financeiro_editar(id):
 
     return redirect(url_for('financeiro'))
 
-
 @app.route('/financeiro/delete/<string:id>', methods=['POST'])
 @login_required
 def financeiro_delete(id):
-    # Buscar a transação antes de excluir
     transacao = query_one("SELECT * FROM transacoes_financeiras WHERE id = %s", (id,))
     if not transacao:
         flash('Transação não encontrada')
@@ -876,7 +909,6 @@ def financeiro_delete(id):
     try:
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
-        # Se for uma venda (entrada), devolver ao estoque
         if transacao['tipo'] == 'entrada' and transacao['produto_id'] and transacao['quantidade'] > 0:
             cur.execute("SELECT * FROM produtos WHERE id = %s FOR UPDATE", (transacao['produto_id'],))
             produto = cur.fetchone()
@@ -888,14 +920,12 @@ def financeiro_delete(id):
                     WHERE id = %s
                 """, (novo_estoque, transacao['produto_id']))
 
-                # Registrar movimentação de reversão
                 cur.execute("""
                     INSERT INTO movimentacoes_estoque 
                     (produto_id, tipo, origem, quantidade, descricao, referencia_id) 
                     VALUES (%s, 'entrada', 'cancelamento', %s, %s, %s)
                 """, (transacao['produto_id'], transacao['quantidade'], f'Cancelamento de venda - {transacao["descricao"]}', id))
 
-        # Excluir a transação
         cur.execute("DELETE FROM transacoes_financeiras WHERE id = %s", (id,))
 
         conn.commit()
@@ -911,6 +941,107 @@ def financeiro_delete(id):
         flash(f'❌ Erro ao excluir transação: {str(e)}')
 
     return redirect(url_for('financeiro'))
+
+# ==========================================
+# RELATÓRIO
+# ==========================================
+
+@app.route('/relatorio')
+@login_required
+def relatorio():
+    # Vendas por dia (últimos 7 dias)
+    vendas_por_dia = query_all("""
+        SELECT 
+            TO_CHAR(DATE(data), 'DD/MM') AS dia,
+            COUNT(*) AS quantidade,
+            COALESCE(SUM(valor), 0) AS total
+        FROM transacoes_financeiras
+        WHERE tipo = 'entrada'
+          AND data >= (CURRENT_DATE - INTERVAL '6 days')
+        GROUP BY DATE(data)
+        ORDER BY DATE(data) ASC
+    """) or []
+
+    # Top 5 clientes
+    top_clientes = query_all("""
+        SELECT 
+            c.nome,
+            COUNT(t.id) AS total_vendas,
+            COALESCE(SUM(t.valor), 0) AS total_gasto,
+            COALESCE(SUM(t.quantidade), 0) AS total_produtos
+        FROM clientes c
+        JOIN transacoes_financeiras t ON t.cliente_id = c.id
+        WHERE t.tipo = 'entrada'
+        GROUP BY c.id, c.nome
+        ORDER BY total_gasto DESC
+        LIMIT 5
+    """) or []
+
+    # Produtos mais vendidos
+    produtos_mais_vendidos = query_all("""
+        SELECT 
+            p.nome,
+            COALESCE(SUM(t.quantidade), 0) AS total_vendido,
+            COALESCE(SUM(t.valor), 0) AS total_faturamento
+        FROM produtos p
+        JOIN transacoes_financeiras t ON t.produto_id = p.id
+        WHERE t.tipo = 'entrada'
+        GROUP BY p.id, p.nome
+        ORDER BY total_vendido DESC
+        LIMIT 5
+    """) or []
+
+    # Produtos em estoque (top 5)
+    produtos_estoque = query_all("""
+        SELECT nome, estoque_atual 
+        FROM produtos 
+        WHERE status = 'ativo' 
+        ORDER BY estoque_atual DESC 
+        LIMIT 5
+    """) or []
+
+    # Últimas vendas (20)
+    ultimas_vendas = query_all("""
+        SELECT 
+            t.*,
+            p.nome as produto_nome,
+            c.nome as cliente_nome
+        FROM transacoes_financeiras t
+        LEFT JOIN produtos p ON t.produto_id = p.id
+        LEFT JOIN clientes c ON t.cliente_id = c.id
+        WHERE t.tipo = 'entrada'
+        ORDER BY t.data DESC
+        LIMIT 20
+    """) or []
+
+    # Últimas movimentações (20)
+    ultimas_movimentacoes = query_all("""
+        SELECT 
+            m.*,
+            p.nome as produto_nome
+        FROM movimentacoes_estoque m
+        LEFT JOIN produtos p ON m.produto_id = p.id
+        ORDER BY m.data_movimentacao DESC
+        LIMIT 20
+    """) or []
+
+    # Totais
+    total_vendas = query_one("SELECT COUNT(*) as total FROM transacoes_financeiras WHERE tipo = 'entrada'")
+    total_faturamento = query_one("SELECT COALESCE(SUM(valor), 0) as total FROM transacoes_financeiras WHERE tipo = 'entrada'")
+    total_clientes = query_one("SELECT COUNT(*) as total FROM clientes")
+    total_produtos = query_one("SELECT COUNT(*) as total FROM produtos WHERE status = 'ativo'")
+
+    return render_template('relatorio.html',
+                         vendas_por_dia=vendas_por_dia,
+                         top_clientes=top_clientes,
+                         produtos_mais_vendidos=produtos_mais_vendidos,
+                         produtos_estoque=produtos_estoque,
+                         ultimas_vendas=ultimas_vendas,
+                         ultimas_movimentacoes=ultimas_movimentacoes,
+                         total_vendas=total_vendas['total'] if total_vendas else 0,
+                         total_faturamento=total_faturamento['total'] if total_faturamento else 0,
+                         total_clientes=total_clientes['total'] if total_clientes else 0,
+                         total_produtos=total_produtos['total'] if total_produtos else 0)
 
 # ==========================================
 # CRM
@@ -1045,7 +1176,6 @@ def cliente_delete(id):
 @app.route('/teste/estoque/<string:produto_id>')
 @login_required
 def teste_estoque(produto_id):
-    """Rota para testar e visualizar o estoque de um produto específico"""
     produto = query_one("SELECT * FROM produtos WHERE id = %s", (produto_id,))
     if not produto:
         return f"❌ Produto {produto_id} não encontrado!"
