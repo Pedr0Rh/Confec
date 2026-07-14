@@ -10,6 +10,7 @@
     </button>
 </div>
 
+<!-- Resumo -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
         <div class="card card-stat" style="border-color: #3498db;">
@@ -37,6 +38,7 @@
     </div>
 </div>
 
+<!-- Lista de Produtos -->
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -50,6 +52,8 @@
                         <th class="hide-mobile">Mínimo</th>
                         <th class="hide-mobile">Preço Custo</th>
                         <th class="hide-mobile">Preço Venda</th>
+                        <th class="hide-mobile">Custo Total</th>
+                        <th class="hide-mobile">Margem</th>
                         <th>Ações</th>
                     </tr>
                 </thead>
@@ -67,10 +71,23 @@
                         <td class="hide-mobile">{{ produto.estoque_minimo }}</td>
                         <td class="hide-mobile">R$ {{ "%.2f"|format(produto.preco_custo or 0) }}</td>
                         <td class="hide-mobile">R$ {{ "%.2f"|format(produto.preco_venda or 0) }}</td>
+                        <td class="hide-mobile">
+                            <span class="text-danger">R$ {{ "%.2f"|format(produto.custo_total or 0) }}</span>
+                        </td>
+                        <td class="hide-mobile">
+                            <span class="{% if (produto.margem_percentual or 0) > 30 %}text-success{% elif (produto.margem_percentual or 0) > 15 %}text-warning{% else %}text-danger{% endif %}">
+                                {{ "%.1f"|format(produto.margem_percentual or 0) }}%
+                                <br>
+                                <small>R$ {{ "%.2f"|format(produto.margem_reais or 0) }}</small>
+                            </span>
+                        </td>
                         <td>
                             <div class="btn-group btn-group-sm">
                                 <button class="btn btn-outline-info" onclick="window.location.href='/estoque/movimentacoes/{{ produto.id }}'" title="Movimentações">
                                     <i class="bi bi-clock-history"></i>
+                                </button>
+                                <button class="btn btn-outline-success" onclick="window.location.href='/estoque/produto/custos/{{ produto.id }}'" title="Custos">
+                                    <i class="bi bi-calculator"></i>
                                 </button>
                                 <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#ajustarEstoque{{ produto.id }}" title="Ajustar Estoque">
                                     <i class="bi bi-arrow-left-right"></i>
@@ -89,7 +106,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8" class="text-center py-4">
+                        <td colspan="10" class="text-center py-4">
                             <i class="bi bi-box fs-1 d-block mb-2"></i>
                             <p class="text-muted">Nenhum produto cadastrado</p>
                         </td>
@@ -111,25 +128,17 @@
             </div>
             <form method="POST" action="{{ url_for('produto_novo') }}">
                 <div class="modal-body">
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> 
-                        <strong>SKU automático:</strong> O SKU será gerado automaticamente baseado no nome do produto.
-                    </div>
                     <div class="row">
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Nome *</label>
-                                <input type="text" name="nome" class="form-control" required id="nomeProduto" oninput="previewSku()">
+                                <input type="text" name="nome" class="form-control" required>
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
-                                <label class="form-label fw-semibold">SKU</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-tag"></i></span>
-                                    <input type="text" name="sku_display" class="form-control" id="skuPreview" placeholder="Será gerado automaticamente" readonly style="background: #f3f4f8;">
-                                </div>
-                                <small class="text-muted">O SKU será gerado automaticamente ao salvar</small>
+                                <label class="form-label fw-semibold">SKU (automático)</label>
+                                <input type="text" class="form-control" value="Gerado automaticamente" disabled>
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -249,11 +258,7 @@
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">SKU</label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-tag"></i></span>
-                                    <input type="text" name="sku" class="form-control" value="{{ produto.sku or '' }}" placeholder="SKU atual">
-                                </div>
-                                <small class="text-muted">Deixe em branco para manter o SKU atual</small>
+                                <input type="text" name="sku" class="form-control" value="{{ produto.sku or '' }}">
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -319,42 +324,19 @@
 {% endfor %}
 
 <script>
-    // ===== PREVISUALIZAÇÃO DO SKU =====
-    function previewSku() {
-        var nome = document.getElementById('nomeProduto').value;
-        var preview = document.getElementById('skuPreview');
-        
-        if (nome && nome.trim() !== '') {
-            // Gerar base do SKU (primeiras 4 letras)
-            var palavras = nome.trim().toUpperCase().split(' ');
-            var skuBase = '';
-            
-            if (palavras.length >= 2) {
-                for (var i = 0; i < Math.min(palavras.length, 4); i++) {
-                    skuBase += palavras[i][0];
-                }
-            } else {
-                skuBase = nome.substring(0, 4).toUpperCase();
-            }
-            
-            preview.value = skuBase + '-XXX (será gerado automaticamente)';
-            preview.style.color = '#6b7280';
-        } else {
-            preview.value = 'Será gerado automaticamente';
-            preview.style.color = '#6b7280';
-        }
-    }
-
-    // ===== LIMPAR PREVISUALIZAÇÃO AO FECHAR O MODAL =====
+    // Fecha modais corretamente
     document.addEventListener('DOMContentLoaded', function() {
-        var modal = document.getElementById('novoProduto');
-        if (modal) {
+        var modais = document.querySelectorAll('.modal');
+        modais.forEach(function(modal) {
             modal.addEventListener('hidden.bs.modal', function() {
-                document.getElementById('nomeProduto').value = '';
-                document.getElementById('skuPreview').value = 'Será gerado automaticamente';
-                document.getElementById('skuPreview').style.color = '#6b7280';
+                document.querySelectorAll('.modal-backdrop').forEach(function(el) {
+                    el.remove();
+                });
+                document.body.classList.remove('modal-open');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
             });
-        }
+        });
     });
 </script>
 {% endblock %}

@@ -9,6 +9,7 @@ import socket
 import urllib.parse
 import traceback
 import io
+from decimal import Decimal
 
 # ==========================================
 # CONFIGURAR FUSO HORÁRIO PARA BRASIL (UTC-3) - DEFINITIVO
@@ -898,7 +899,36 @@ def index():
 @app.route('/estoque')
 @login_required
 def estoque():
-    produtos = query_all("SELECT * FROM produtos WHERE status = 'ativo' ORDER BY nome")
+    produtos = query_all("""
+        SELECT 
+            p.*,
+            COALESCE((
+                SELECT SUM(valor * quantidade) 
+                FROM custos_produtos 
+                WHERE produto_id = p.id
+            ), 0) as custo_total,
+            (p.preco_venda - COALESCE((
+                SELECT SUM(valor * quantidade) 
+                FROM custos_produtos 
+                WHERE produto_id = p.id
+            ), 0)) as margem_reais,
+            CASE 
+                WHEN p.preco_venda > 0 AND COALESCE((
+                    SELECT SUM(valor * quantidade) 
+                    FROM custos_produtos 
+                    WHERE produto_id = p.id
+                ), 0) > 0 THEN 
+                    ROUND(((p.preco_venda - COALESCE((
+                        SELECT SUM(valor * quantidade) 
+                        FROM custos_produtos 
+                        WHERE produto_id = p.id
+                    ), 0)) / p.preco_venda) * 100, 2)
+                ELSE 0
+            END as margem_percentual
+        FROM produtos p
+        WHERE p.status = 'ativo'
+        ORDER BY p.nome
+    """)
 
     resumo = query_one("""
         SELECT 
@@ -1056,6 +1086,111 @@ def estoque_ajustar(produto_id):
         flash('❌ Erro ao ajustar estoque')
 
     return redirect(url_for('estoque'))
+
+# ==========================================
+# CUSTOS DOS PRODUTOS
+# ==========================================
+
+@app.route('/estoque/produto/custos/<string:produto_id>')
+@login_required
+def produto_custos(produto_id):
+    """Página de gerenciamento de custos do produto"""
+    produto = query_one("SELECT * FROM produtos WHERE id = %s", (produto_id,))
+    if not produto:
+        flash('Produto não encontrado')
+        return redirect(url_for('estoque'))
+    
+    custos = query_all("""
+        SELECT * FROM custos_produtos 
+        WHERE produto_id = %s 
+        ORDER BY tipo_custo, created_at
+    """, (produto_id,))
+    
+    # Calcular total de custos
+    total_custos = query_one("""
+        SELECT COALESCE(SUM(valor * quantidade), 0) as total 
+        FROM custos_produtos 
+        WHERE produto_id = %s
+    """, (produto_id,))
+    
+    return render_template('produto_custos.html', 
+                         produto=produto, 
+                         custos=custos,
+                         total_custos=total_custos['total'] if total_custos else 0)
+
+@app.route('/estoque/produto/custos/novo/<string:produto_id>', methods=['POST'])
+@login_required
+def produto_custo_novo(produto_id):
+    """Adiciona um novo custo ao produto"""
+    sql = """
+        INSERT INTO custos_produtos (produto_id, tipo_custo, descricao, valor, quantidade, unidade) 
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    if execute_sql(sql, (
+        produto_id,
+        request.form['tipo_custo'],
+        request.form['descricao'],
+        float(request.form['valor']),
+        float(request.form['quantidade'] or 1),
+        request.form['unidade']
+    )):
+        # Recalcular custos do produto
+        execute_sql("SELECT calcular_custos_produto(%s)", (produto_id,))
+        flash('✅ Custo adicionado com sucesso!')
+    else:
+        flash('❌ Erro ao adicionar custo')
+    return redirect(url_for('produto_custos', produto_id=produto_id))
+
+@app.route('/estoque/produto/custos/editar/<string:custo_id>', methods=['POST'])
+@login_required
+def produto_custo_editar(custo_id):
+    """Edita um custo existente"""
+    custo = query_one("SELECT * FROM custos_produtos WHERE id = %s", (custo_id,))
+    if not custo:
+        flash('Custo não encontrado')
+        return redirect(url_for('estoque'))
+    
+    sql = """
+        UPDATE custos_produtos SET 
+            tipo_custo = %s, 
+            descricao = %s, 
+            valor = %s, 
+            quantidade = %s, 
+            unidade = %s,
+            updated_at = NOW()
+        WHERE id = %s
+    """
+    if execute_sql(sql, (
+        request.form['tipo_custo'],
+        request.form['descricao'],
+        float(request.form['valor']),
+        float(request.form['quantidade'] or 1),
+        request.form['unidade'],
+        custo_id
+    )):
+        # Recalcular custos do produto
+        execute_sql("SELECT calcular_custos_produto(%s)", (custo['produto_id'],))
+        flash('✅ Custo atualizado com sucesso!')
+    else:
+        flash('❌ Erro ao atualizar custo')
+    return redirect(url_for('produto_custos', produto_id=custo['produto_id']))
+
+@app.route('/estoque/produto/custos/delete/<string:custo_id>', methods=['POST'])
+@login_required
+def produto_custo_delete(custo_id):
+    """Exclui um custo"""
+    custo = query_one("SELECT * FROM custos_produtos WHERE id = %s", (custo_id,))
+    if not custo:
+        flash('Custo não encontrado')
+        return redirect(url_for('estoque'))
+    
+    if execute_sql("DELETE FROM custos_produtos WHERE id = %s", (custo_id,)):
+        # Recalcular custos do produto
+        execute_sql("SELECT calcular_custos_produto(%s)", (custo['produto_id'],))
+        flash('✅ Custo excluído com sucesso!')
+    else:
+        flash('❌ Erro ao excluir custo')
+    return redirect(url_for('produto_custos', produto_id=custo['produto_id']))
 
 # ==========================================
 # PRODUÇÃO
@@ -1228,7 +1363,7 @@ def colaborador_delete(id):
     return redirect(url_for('colaboradores'))
 
 # ==========================================
-# FINANCEIRO (SEM NUMERO_PEDIDO)
+# FINANCEIRO
 # ==========================================
 
 @app.route('/financeiro', methods=['GET', 'POST'])
