@@ -1,0 +1,535 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-file-earmark-text"></i> Relatório Completo</h2>
+        <p class="text-muted">Análises detalhadas, gráficos e métricas do seu negócio</p>
+    </div>
+    <div>
+        <a href="{{ url_for('relatorio_pdf') }}" class="btn btn-primary-custom" target="_blank">
+            <i class="bi bi-filetype-pdf"></i> Exportar PDF
+        </a>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 1. CARDS - RESUMO GERAL -->
+<!-- ========================================== -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #3498db;">
+            <div class="stat-number">{{ resumo_geral.total_produtos or 0 }}</div>
+            <div class="stat-label">Produtos</div>
+            <i class="bi bi-box-seam stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #27ae60;">
+            <div class="stat-number">{{ resumo_geral.total_clientes or 0 }}</div>
+            <div class="stat-label">Clientes</div>
+            <i class="bi bi-people stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #f39c12;">
+            <div class="stat-number">R$ {{ "%.2f"|format(resumo_geral.total_entradas or 0) }}</div>
+            <div class="stat-label">Faturamento</div>
+            <i class="bi bi-cash stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #e74c3c;">
+            <div class="stat-number">{{ resumo_geral.producoes_andamento or 0 }}</div>
+            <div class="stat-label">Produções Ativas</div>
+            <i class="bi bi-gear stat-icon"></i>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 2. ANÁLISE FINANCEIRA -->
+<!-- ========================================== -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-pie-chart"></i> Resumo Financeiro</h5>
+            <div class="row g-2">
+                <div class="col-6">
+                    <div class="bg-light p-2 rounded text-center">
+                        <div style="font-size: 0.7rem; color: #6c757d;">Entradas</div>
+                        <div class="fw-bold text-success">R$ {{ "%.2f"|format(analise_financeira.entradas or 0) }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="bg-light p-2 rounded text-center">
+                        <div style="font-size: 0.7rem; color: #6c757d;">Saídas</div>
+                        <div class="fw-bold text-danger">R$ {{ "%.2f"|format(analise_financeira.saidas or 0) }}</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="bg-light p-2 rounded text-center">
+                        <div style="font-size: 0.7rem; color: #6c757d;">Vendas</div>
+                        <div class="fw-bold">{{ analise_financeira.qtd_vendas or 0 }}</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="bg-light p-2 rounded text-center">
+                        <div style="font-size: 0.7rem; color: #6c757d;">Despesas</div>
+                        <div class="fw-bold">{{ analise_financeira.qtd_despesas or 0 }}</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="bg-light p-2 rounded text-center">
+                        <div style="font-size: 0.7rem; color: #6c757d;">Ticket Médio</div>
+                        <div class="fw-bold">R$ {{ "%.2f"|format(analise_financeira.ticket_medio or 0) }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-2 text-center">
+                <span class="fw-bold">Saldo: </span>
+                <span class="{% if (analise_financeira.entradas or 0) > (analise_financeira.saidas or 0) %}text-success{% else %}text-danger{% endif %}">
+                    R$ {{ "%.2f"|format((analise_financeira.entradas or 0) - (analise_financeira.saidas or 0)) }}
+                </span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-graph-up"></i> Produção (Últimos 30 dias)</h5>
+            <div class="row g-2">
+                <div class="col-6">
+                    <div class="bg-light p-2 rounded text-center">
+                        <div style="font-size: 0.7rem; color: #6c757d;">Total Produções</div>
+                        <div class="fw-bold">{{ analise_producao.total_producoes or 0 }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="bg-light p-2 rounded text-center">
+                        <div style="font-size: 0.7rem; color: #6c757d;">Peças Produzidas</div>
+                        <div class="fw-bold">{{ analise_producao.total_pecas or 0 }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="bg-light p-2 rounded text-center" style="background: #d4edda !important;">
+                        <div style="font-size: 0.7rem; color: #155724;">✅ Finalizadas</div>
+                        <div class="fw-bold" style="color: #155724;">{{ analise_producao.finalizadas or 0 }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="bg-light p-2 rounded text-center" style="background: #fff3cd !important;">
+                        <div style="font-size: 0.7rem; color: #856404;">🔄 Em Andamento</div>
+                        <div class="fw-bold" style="color: #856404;">{{ analise_producao.em_andamento or 0 }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-2 text-center">
+                <span class="text-muted">Média por produção: </span>
+                <span class="fw-bold">{{ "%.1f"|format(analise_producao.media_pecas_por_producao or 0) }} peças</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 3. GRÁFICO - VENDAS ÚLTIMOS 30 DIAS -->
+<!-- ========================================== -->
+<div class="card p-3 mb-4">
+    <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill"></i> Vendas - Últimos 30 Dias</h5>
+    <div style="height: 300px;">
+        <canvas id="chartVendas30Dias"></canvas>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 4. GRÁFICO - VENDAS MENSAIS -->
+<!-- ========================================== -->
+<div class="card p-3 mb-4">
+    <h5 class="fw-bold mb-3"><i class="bi bi-graph-up-arrow"></i> Evolução Mensal de Vendas</h5>
+    <div style="height: 300px;">
+        <canvas id="chartVendasMensais"></canvas>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 5. TOP CLIENTES -->
+<!-- ========================================== -->
+<div class="card mb-4">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold mb-0"><i class="bi bi-trophy"></i> Top 10 Clientes</h5>
+        <span class="badge bg-primary">{{ top_clientes|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Cliente</th>
+                        <th>Vendas</th>
+                        <th>Produtos</th>
+                        <th>Ticket Médio</th>
+                        <th>Total Gasto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cliente in top_clientes %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ loop.index }}</span></td>
+                        <td><strong>{{ cliente.nome }}</strong></td>
+                        <td>{{ cliente.total_vendas }}</td>
+                        <td>{{ cliente.total_produtos }}</td>
+                        <td>R$ {{ "%.2f"|format(cliente.ticket_medio) }}</td>
+                        <td class="text-gold fw-bold">R$ {{ "%.2f"|format(cliente.total_gasto) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center py-3">Nenhum cliente com vendas</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 6. PRODUTOS MAIS VENDIDOS -->
+<!-- ========================================== -->
+<div class="card mb-4">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold mb-0"><i class="bi bi-box"></i> Produtos Mais Vendidos</h5>
+        <span class="badge bg-primary">{{ produtos_mais_vendidos|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Produto</th>
+                        <th>SKU</th>
+                        <th>Qtd</th>
+                        <th>Faturamento</th>
+                        <th>Margem</th>
+                        <th>Estoque</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for produto in produtos_mais_vendidos %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ loop.index }}</span></td>
+                        <td><strong>{{ produto.nome }}</strong></td>
+                        <td>{{ produto.sku or '-' }}</td>
+                        <td>{{ produto.total_vendido }}</td>
+                        <td>R$ {{ "%.2f"|format(produto.total_faturamento) }}</td>
+                        <td>
+                            <span class="{% if produto.margem_lucro_percentual > 30 %}text-success{% elif produto.margem_lucro_percentual > 15 %}text-warning{% else %}text-danger{% endif %}">
+                                {{ "%.1f"|format(produto.margem_lucro_percentual or 0) }}%
+                            </span>
+                        </td>
+                        <td>
+                            {% if produto.estoque_atual <= 5 %}
+                                <span class="badge bg-danger">{{ produto.estoque_atual }}</span>
+                            {% elif produto.estoque_atual <= 20 %}
+                                <span class="badge bg-warning">{{ produto.estoque_atual }}</span>
+                            {% else %}
+                                <span class="badge bg-success">{{ produto.estoque_atual }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center py-3">Nenhum produto vendido</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 7. PRODUTOS COM ESTOQUE BAIXO -->
+<!-- ========================================== -->
+{% if produtos_estoque_baixo %}
+<div class="card mb-4" style="border-left: 4px solid #e74c3c;">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold mb-0"><i class="bi bi-exclamation-triangle text-danger"></i> Produtos com Estoque Baixo</h5>
+        <span class="badge bg-danger">{{ produtos_estoque_baixo|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Produto</th>
+                        <th>SKU</th>
+                        <th>Atual</th>
+                        <th>Mínimo</th>
+                        <th>Déficit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for produto in produtos_estoque_baixo %}
+                    <tr>
+                        <td><strong>{{ produto.nome }}</strong></td>
+                        <td>{{ produto.sku or '-' }}</td>
+                        <td><span class="badge bg-danger">{{ produto.estoque_atual }}</span></td>
+                        <td>{{ produto.estoque_minimo }}</td>
+                        <td><span class="text-danger">{{ produto.deficit }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ========================================== -->
+<!-- 8. PRODUÇÃO POR ETAPA -->
+<!-- ========================================== -->
+<div class="card mb-4">
+    <div class="card-header bg-transparent">
+        <h5 class="fw-bold mb-0"><i class="bi bi-gear"></i> Produção por Etapa</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Etapa</th>
+                        <th>Ordens</th>
+                        <th>Peças</th>
+                        <th>Média</th>
+                        <th>Finalizadas</th>
+                        <th>Em Andamento</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for etapa in producao_etapas %}
+                    <tr>
+                        <td><strong>{{ etapa.etapa }}</strong></td>
+                        <td>{{ etapa.qtd_producoes }}</td>
+                        <td>{{ etapa.total_pecas }}</td>
+                        <td>{{ "%.1f"|format(etapa.media_pecas) }}</td>
+                        <td><span class="badge bg-success">{{ etapa.finalizadas }}</span></td>
+                        <td><span class="badge bg-warning">{{ etapa.em_andamento }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center py-3">Nenhuma produção</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 9. ÚLTIMAS VENDAS -->
+<!-- ========================================== -->
+<div class="card mb-4">
+    <div class="card-header bg-transparent">
+        <h5 class="fw-bold mb-0"><i class="bi bi-clock-history"></i> Últimas 20 Vendas</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Cliente</th>
+                        <th>Produto</th>
+                        <th>Qtd</th>
+                        <th>Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for venda in ultimas_vendas %}
+                    <tr>
+                        <td>{{ venda.data.strftime('%d/%m/%Y %H:%M') if venda.data else '-' }}</td>
+                        <td>{{ venda.cliente_nome or '-' }}</td>
+                        <td>{{ venda.produto_nome or '-' }}</td>
+                        <td>{{ venda.quantidade or 0 }}</td>
+                        <td class="text-success fw-bold">R$ {{ "%.2f"|format(venda.valor) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center py-3">Nenhuma venda</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 10. ÚLTIMAS MOVIMENTAÇÕES -->
+<!-- ========================================== -->
+<div class="card mb-4">
+    <div class="card-header bg-transparent">
+        <h5 class="fw-bold mb-0"><i class="bi bi-arrow-left-right"></i> Últimas Movimentações de Estoque</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Produto</th>
+                        <th>Tipo</th>
+                        <th>Qtd</th>
+                        <th>Descrição</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mov in ultimas_movimentacoes %}
+                    <tr>
+                        <td>{{ mov.data_movimentacao.strftime('%d/%m/%Y %H:%M') if mov.data_movimentacao else '-' }}</td>
+                        <td>{{ mov.produto_nome or '-' }}</td>
+                        <td>
+                            <span class="badge {% if mov.tipo == 'entrada' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ mov.tipo|upper }}
+                            </span>
+                        </td>
+                        <td>{{ mov.quantidade }}</td>
+                        <td>{{ mov.descricao or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center py-3">Nenhuma movimentação</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 11. CATEGORIAS MAIS VENDIDAS -->
+<!-- ========================================== -->
+<div class="card mb-4">
+    <div class="card-header bg-transparent">
+        <h5 class="fw-bold mb-0"><i class="bi bi-tags"></i> Categorias Mais Vendidas</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Categoria</th>
+                        <th>Vendas</th>
+                        <th>Itens</th>
+                        <th>Faturamento</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in categorias_mais_vendidas %}
+                    <tr>
+                        <td><strong>{{ cat.categoria }}</strong></td>
+                        <td>{{ cat.qtd_vendas }}</td>
+                        <td>{{ cat.total_itens }}</td>
+                        <td class="text-success fw-bold">R$ {{ "%.2f"|format(cat.total_faturamento) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-3">Nenhuma categoria</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- SCRIPTS PARA GRÁFICOS -->
+<!-- ========================================== -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // ===== GRÁFICO 1: VENDAS ÚLTIMOS 30 DIAS =====
+    const ctx1 = document.getElementById('chartVendas30Dias');
+    if (ctx1) {
+        const dados = {{ vendas_30_dias|tojson }};
+        const labels = dados.map(d => d.dia);
+        const valores = dados.map(d => d.total);
+        const quantidades = dados.map(d => d.quantidade);
+
+        new Chart(ctx1, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Valor Vendido (R$)',
+                        data: valores,
+                        backgroundColor: 'rgba(39, 174, 96, 0.7)',
+                        borderColor: '#27ae60',
+                        borderWidth: 1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Quantidade de Vendas',
+                        data: quantidades,
+                        backgroundColor: 'rgba(233, 69, 96, 0.5)',
+                        borderColor: '#e94560',
+                        borderWidth: 1,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top', labels: { font: { size: 10 } } }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { callback: function(value) { return 'R$ ' + value.toFixed(0); } }
+                    },
+                    y1: {
+                        position: 'right',
+                        beginAtZero: true,
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    }
+
+    // ===== GRÁFICO 2: VENDAS MENSAIS =====
+    const ctx2 = document.getElementById('chartVendasMensais');
+    if (ctx2) {
+        const dados = {{ vendas_mensais|tojson }};
+        const labels = dados.map(d => d.mes);
+        const valores = dados.map(d => d.total);
+
+        new Chart(ctx2, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Vendas Mensais (R$)',
+                        data: valores,
+                        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                        borderColor: '#3498db',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top', labels: { font: { size: 10 } } }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { callback: function(value) { return 'R$ ' + value.toFixed(0); } }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

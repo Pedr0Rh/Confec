@@ -1632,66 +1632,176 @@ def financeiro_delete(id):
 # RELATÓRIO
 # ==========================================
 
+# ==========================================
+# RELATÓRIO COMPLETO COM ANÁLISES
+# ==========================================
+
 @app.route('/relatorio')
 @login_required
 def relatorio():
-    vendas_por_dia = query_all("""
+    """Relatório completo com análises e gráficos"""
+    
+    # ===== 1. RESUMO GERAL =====
+    resumo_geral = query_one("""
+        SELECT 
+            (SELECT COUNT(*) FROM produtos WHERE status = 'ativo') as total_produtos,
+            (SELECT COALESCE(SUM(estoque_atual), 0) FROM produtos) as total_estoque,
+            (SELECT COALESCE(SUM(estoque_atual * preco_custo), 0) FROM produtos) as valor_estoque,
+            (SELECT COUNT(*) FROM clientes) as total_clientes,
+            (SELECT COUNT(*) FROM colaboradores) as total_colaboradores,
+            (SELECT COUNT(*) FROM producoes WHERE finalizado = false) as producoes_andamento,
+            (SELECT COUNT(*) FROM producoes WHERE finalizado = true) as producoes_finalizadas,
+            (SELECT COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN valor ELSE 0 END), 0) FROM transacoes_financeiras) as total_entradas,
+            (SELECT COALESCE(SUM(CASE WHEN tipo = 'saida' THEN valor ELSE 0 END), 0) FROM transacoes_financeiras) as total_saidas,
+            (SELECT COUNT(*) FROM transacoes_financeiras WHERE tipo = 'entrada') as total_vendas,
+            (SELECT COUNT(*) FROM transacoes_financeiras WHERE tipo = 'saida') as total_despesas
+    """)
+    
+    # ===== 2. ANÁLISE DE VENDAS =====
+    # Vendas por período (últimos 30 dias)
+    vendas_30_dias = query_all("""
         SELECT 
             TO_CHAR(DATE(data), 'DD/MM') AS dia,
             COUNT(*) AS quantidade,
-            COALESCE(SUM(valor), 0) AS total
+            COALESCE(SUM(valor), 0) AS total,
+            COALESCE(AVG(valor), 0) AS ticket_medio,
+            COALESCE(SUM(quantidade), 0) AS itens_vendidos
         FROM transacoes_financeiras
         WHERE tipo = 'entrada'
-          AND data >= (CURRENT_DATE - INTERVAL '6 days')
+          AND data >= (CURRENT_DATE - INTERVAL '29 days')
         GROUP BY DATE(data)
         ORDER BY DATE(data) ASC
     """) or []
-
+    
+    # Vendas por mês (últimos 12 meses)
+    vendas_mensais = query_all("""
+        SELECT 
+            TO_CHAR(DATE_TRUNC('month', data), 'MM/YYYY') AS mes,
+            COUNT(*) AS quantidade,
+            COALESCE(SUM(valor), 0) AS total,
+            COALESCE(AVG(valor), 0) AS ticket_medio
+        FROM transacoes_financeiras
+        WHERE tipo = 'entrada'
+          AND data >= (CURRENT_DATE - INTERVAL '11 months')
+        GROUP BY DATE_TRUNC('month', data)
+        ORDER BY DATE_TRUNC('month', data) ASC
+    """) or []
+    
+    # ===== 3. TOP CLIENTES =====
     top_clientes = query_all("""
         SELECT 
+            c.id,
             c.nome,
+            c.telefone,
+            c.email,
             COUNT(t.id) AS total_vendas,
             COALESCE(SUM(t.valor), 0) AS total_gasto,
-            COALESCE(SUM(t.quantidade), 0) AS total_produtos
+            COALESCE(AVG(t.valor), 0) AS ticket_medio,
+            COALESCE(SUM(t.quantidade), 0) AS total_produtos,
+            COALESCE(MAX(t.valor), 0) AS maior_compra,
+            COALESCE(MIN(t.valor), 0) AS menor_compra
         FROM clientes c
         JOIN transacoes_financeiras t ON t.cliente_id = c.id
         WHERE t.tipo = 'entrada'
-        GROUP BY c.id, c.nome
+        GROUP BY c.id, c.nome, c.telefone, c.email
         ORDER BY total_gasto DESC
-        LIMIT 5
+        LIMIT 10
     """) or []
-
+    
+    # ===== 4. PRODUTOS MAIS VENDIDOS =====
     produtos_mais_vendidos = query_all("""
         SELECT 
+            p.id,
             p.nome,
+            p.sku,
+            p.categoria,
             COALESCE(SUM(t.quantidade), 0) AS total_vendido,
-            COALESCE(SUM(t.valor), 0) AS total_faturamento
+            COALESCE(SUM(t.valor), 0) AS total_faturamento,
+            COALESCE(AVG(t.valor), 0) AS ticket_medio,
+            p.estoque_atual,
+            p.preco_custo,
+            p.preco_venda,
+            p.custo_total,
+            p.margem_lucro_percentual,
+            p.margem_lucro_reais
         FROM produtos p
         JOIN transacoes_financeiras t ON t.produto_id = p.id
         WHERE t.tipo = 'entrada'
-        GROUP BY p.id, p.nome
+        GROUP BY p.id, p.nome, p.sku, p.categoria, p.estoque_atual, 
+                 p.preco_custo, p.preco_venda, p.custo_total, 
+                 p.margem_lucro_percentual, p.margem_lucro_reais
         ORDER BY total_vendido DESC
-        LIMIT 5
-    """) or []
-
-    produtos_estoque_baixo = query_all("""
-        SELECT 
-            nome,
-            estoque_atual,
-            estoque_minimo
-        FROM produtos 
-        WHERE status = 'ativo' AND estoque_atual <= estoque_minimo
-        ORDER BY estoque_atual ASC
         LIMIT 10
     """) or []
-
+    
+    # ===== 5. PRODUTOS COM ESTOQUE BAIXO =====
+    produtos_estoque_baixo = query_all("""
+        SELECT 
+            id,
+            nome,
+            sku,
+            categoria,
+            estoque_atual,
+            estoque_minimo,
+            (estoque_minimo - estoque_atual) as deficit,
+            preco_custo,
+            preco_venda
+        FROM produtos 
+        WHERE status = 'ativo' AND estoque_atual <= estoque_minimo
+        ORDER BY deficit DESC
+    """) or []
+    
+    # ===== 6. ANÁLISE FINANCEIRA =====
+    analise_financeira = query_one("""
+        SELECT 
+            COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN valor ELSE 0 END), 0) as entradas,
+            COALESCE(SUM(CASE WHEN tipo = 'saida' THEN valor ELSE 0 END), 0) as saidas,
+            COUNT(CASE WHEN tipo = 'entrada' THEN 1 END) as qtd_vendas,
+            COUNT(CASE WHEN tipo = 'saida' THEN 1 END) as qtd_despesas,
+            COALESCE(AVG(CASE WHEN tipo = 'entrada' THEN valor ELSE NULL END), 0) as ticket_medio,
+            COALESCE(MAX(CASE WHEN tipo = 'entrada' THEN valor ELSE 0 END), 0) as maior_venda,
+            COALESCE(MIN(CASE WHEN tipo = 'entrada' THEN valor ELSE 0 END), 0) as menor_venda
+        FROM transacoes_financeiras
+    """)
+    
+    # ===== 7. ANÁLISE DE PRODUÇÃO =====
+    analise_producao = query_one("""
+        SELECT 
+            COUNT(*) as total_producoes,
+            COALESCE(SUM(quantidade_pecas), 0) as total_pecas,
+            COALESCE(AVG(quantidade_pecas), 0) as media_pecas_por_producao,
+            COUNT(CASE WHEN finalizado = true THEN 1 END) as finalizadas,
+            COUNT(CASE WHEN finalizado = false THEN 1 END) as em_andamento
+        FROM producoes
+        WHERE data_entrada >= (CURRENT_DATE - INTERVAL '30 days')
+    """)
+    
+    # ===== 8. PRODUÇÃO POR ETAPA =====
+    producao_etapas = query_all("""
+        SELECT 
+            e.nome as etapa,
+            COUNT(p.id) as qtd_producoes,
+            COALESCE(SUM(p.quantidade_pecas), 0) as total_pecas,
+            COALESCE(AVG(p.quantidade_pecas), 0) as media_pecas,
+            COUNT(CASE WHEN p.finalizado = true THEN 1 END) as finalizadas,
+            COUNT(CASE WHEN p.finalizado = false THEN 1 END) as em_andamento
+        FROM producoes p
+        JOIN etapas_producao e ON p.etapa_id = e.id
+        WHERE p.data_entrada >= (CURRENT_DATE - INTERVAL '30 days')
+        GROUP BY e.id, e.nome
+        ORDER BY e.ordem
+    """) or []
+    
+    # ===== 9. ÚLTIMAS VENDAS =====
     ultimas_vendas = query_all("""
         SELECT 
             t.data,
             t.valor,
             t.quantidade,
+            t.descricao,
             p.nome as produto_nome,
-            c.nome as cliente_nome
+            c.nome as cliente_nome,
+            c.telefone as cliente_telefone
         FROM transacoes_financeiras t
         LEFT JOIN produtos p ON t.produto_id = p.id
         LEFT JOIN clientes c ON t.cliente_id = c.id
@@ -1699,7 +1809,8 @@ def relatorio():
         ORDER BY t.data DESC
         LIMIT 20
     """) or []
-
+    
+    # ===== 10. ÚLTIMAS MOVIMENTAÇÕES =====
     ultimas_movimentacoes = query_all("""
         SELECT 
             m.*,
@@ -1709,23 +1820,69 @@ def relatorio():
         ORDER BY m.data_movimentacao DESC
         LIMIT 20
     """) or []
-
-    total_vendas = query_one("SELECT COUNT(*) as total FROM transacoes_financeiras WHERE tipo = 'entrada'")
-    total_faturamento = query_one("SELECT COALESCE(SUM(valor), 0) as total FROM transacoes_financeiras WHERE tipo = 'entrada'")
-    total_clientes = query_one("SELECT COUNT(*) as total FROM clientes")
-    total_produtos = query_one("SELECT COUNT(*) as total FROM produtos WHERE status = 'ativo'")
-
-    return render_template('relatorio.html',
-                         vendas_por_dia=vendas_por_dia,
+    
+    # ===== 11. CATEGORIAS MAIS VENDIDAS =====
+    categorias_mais_vendidas = query_all("""
+        SELECT 
+            COALESCE(p.categoria, 'Sem categoria') as categoria,
+            COUNT(t.id) as qtd_vendas,
+            COALESCE(SUM(t.quantidade), 0) as total_itens,
+            COALESCE(SUM(t.valor), 0) as total_faturamento
+        FROM transacoes_financeiras t
+        LEFT JOIN produtos p ON t.produto_id = p.id
+        WHERE t.tipo = 'entrada'
+        GROUP BY p.categoria
+        ORDER BY total_faturamento DESC
+    """) or []
+    
+    # ===== 12. RESUMO DE VENDAS POR DIA DA SEMANA =====
+    vendas_por_dia_semana = query_all("""
+        SELECT 
+            CASE EXTRACT(DOW FROM data)
+                WHEN 0 THEN 'Domingo'
+                WHEN 1 THEN 'Segunda'
+                WHEN 2 THEN 'Terça'
+                WHEN 3 THEN 'Quarta'
+                WHEN 4 THEN 'Quinta'
+                WHEN 5 THEN 'Sexta'
+                WHEN 6 THEN 'Sábado'
+            END as dia_semana,
+            COUNT(*) as qtd_vendas,
+            COALESCE(SUM(valor), 0) as total_vendas,
+            COALESCE(AVG(valor), 0) as ticket_medio
+        FROM transacoes_financeiras
+        WHERE tipo = 'entrada'
+        GROUP BY EXTRACT(DOW FROM data)
+        ORDER BY EXTRACT(DOW FROM data) ASC
+    """) or []
+    
+    # ===== 13. RESUMO DE VENDAS POR HORA =====
+    vendas_por_hora = query_all("""
+        SELECT 
+            EXTRACT(HOUR FROM data) as hora,
+            COUNT(*) as qtd_vendas,
+            COALESCE(SUM(valor), 0) as total_vendas
+        FROM transacoes_financeiras
+        WHERE tipo = 'entrada'
+        GROUP BY EXTRACT(HOUR FROM data)
+        ORDER BY hora ASC
+    """) or []
+    
+    return render_template('relatorio_completo.html',
+                         resumo_geral=resumo_geral,
+                         vendas_30_dias=vendas_30_dias,
+                         vendas_mensais=vendas_mensais,
                          top_clientes=top_clientes,
                          produtos_mais_vendidos=produtos_mais_vendidos,
                          produtos_estoque_baixo=produtos_estoque_baixo,
+                         analise_financeira=analise_financeira,
+                         analise_producao=analise_producao,
+                         producao_etapas=producao_etapas,
                          ultimas_vendas=ultimas_vendas,
                          ultimas_movimentacoes=ultimas_movimentacoes,
-                         total_vendas=total_vendas['total'] if total_vendas else 0,
-                         total_faturamento=total_faturamento['total'] if total_faturamento else 0,
-                         total_clientes=total_clientes['total'] if total_clientes else 0,
-                         total_produtos=total_produtos['total'] if total_produtos else 0)
+                         categorias_mais_vendidas=categorias_mais_vendidas,
+                         vendas_por_dia_semana=vendas_por_dia_semana,
+                         vendas_por_hora=vendas_por_hora)
 
 # ==========================================
 # RELATÓRIO PDF
