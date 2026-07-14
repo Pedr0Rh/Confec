@@ -202,14 +202,14 @@
 
 <!-- ===== MODAIS AJUSTAR ESTOQUE ===== -->
 {% for produto in produtos %}
-<div class="modal fade" id="ajustarEstoque{{ produit.id }}" tabindex="-1">
+<div class="modal fade" id="ajustarEstoque{{ produto.id }}" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-arrow-left-right"></i> Ajustar Estoque - {{ produto.nome }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{ url_for('estoque_ajustar', produto_id=produit.id) }}">
+            <form method="POST" action="{{ url_for('estoque_ajustar', produto_id=produto.id) }}">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Tipo</label>
@@ -240,14 +240,14 @@
 </div>
 
 <!-- ===== MODAIS EDITAR PRODUTO ===== -->
-<div class="modal fade" id="editarProduto{{ produit.id }}" tabindex="-1">
+<div class="modal fade" id="editarProduto{{ produto.id }}" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Produto</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{ url_for('produto_editar', id=produit.id) }}">
+            <form method="POST" action="{{ url_for('produto_editar', id=produto.id) }}">
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-12 col-md-6">
@@ -332,7 +332,6 @@
         var skuField = document.getElementById('skuProduto');
         
         if (nome.length >= 2) {
-            // Pegar as primeiras letras de cada palavra (até 4)
             var palavras = nome.trim().toUpperCase().split(' ');
             var skuBase = '';
             
@@ -342,7 +341,6 @@
                 skuBase = nome.substring(0, 4).toUpperCase();
             }
             
-            // Adicionar um número aleatório de 3 dígitos
             var numero = String(Math.floor(Math.random() * 900) + 100);
             skuField.value = skuBase + '-' + numero;
         } else {
