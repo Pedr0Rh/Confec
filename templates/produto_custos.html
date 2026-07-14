@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-calculator"></i> Custos - {{ produto.nome }}</h2>
+        <p class="text-muted">Gerencie os custos detalhados do produto</p>
+    </div>
+    <div>
+        <a href="{{ url_for('estoque') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Voltar
+        </a>
+    </div>
+</div>
+
+<!-- Resumo do Produto -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card card-stat" style="border-color: #3498db;">
+            <div class="stat-number">{{ produto.nome }}</div>
+            <div class="stat-label">Produto</div>
+            <div class="stat-label" style="font-size: 0.7rem; color: #6c757d;">SKU: {{ produto.sku or '-' }}</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-stat" style="border-color: #27ae60;">
+            <div class="stat-number">R$ {{ "%.2f"|format(produto.preco_venda or 0) }}</div>
+            <div class="stat-label">Preço de Venda</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-stat" style="border-color: #e74c3c;">
+            <div class="stat-number">R$ {{ "%.2f"|format(total_custos) }}</div>
+            <div class="stat-label">Custo Total</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card card-stat" style="border-color: #f39c12;">
+            <div class="stat-number">
+                R$ {{ "%.2f"|format(produto.preco_venda - total_custos) }}
+                <small style="font-size: 0.5rem; display: block;">
+                    {% if produto.preco_venda > 0 %}
+                        {{ "%.1f"|format(((produto.preco_venda - total_custos) / produto.preco_venda * 100) if total_custos > 0 else 0) }}%
+                    {% else %}
+                        0%
+                    {% endif %}
+                </small>
+            </div>
+            <div class="stat-label">Margem de Lucro</div>
+        </div>
+    </div>
+</div>
+
+<!-- Lista de Custos -->
+<div class="card">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold mb-0"><i class="bi bi-list"></i> Custos Detalhados</h5>
+        <button class="btn btn-primary-custom" data-bs-toggle="modal" data-bs-target="#novoCusto">
+            <i class="bi bi-plus-lg"></i> Adicionar Custo
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Descrição</th>
+                        <th>Valor Unit.</th>
+                        <th>Quantidade</th>
+                        <th>Unidade</th>
+                        <th>Total</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for custo in custos %}
+                    <tr>
+                        <td>
+                            <span class="badge bg-secondary">{{ custo.tipo_custo|replace('_', ' ')|title }}</span>
+                        </td>
+                        <td>{{ custo.descricao or '-' }}</td>
+                        <td>R$ {{ "%.2f"|format(custo.valor) }}</td>
+                        <td>{{ custo.quantidade }}</td>
+                        <td>{{ custo.unidade or 'UN' }}</td>
+                        <td class="fw-bold">R$ {{ "%.2f"|format(custo.valor * custo.quantidade) }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarCusto{{ custo.id }}" title="Editar">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <form method="POST" action="{{ url_for('produto_custo_delete', custo_id=custo.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir este custo?')">
+                                    <button type="submit" class="btn btn-outline-danger" title="Excluir">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-4">
+                            <i class="bi bi-box fs-1 d-block mb-2"></i>
+                            <p class="text-muted">Nenhum custo cadastrado para este produto</p>
+                            <button class="btn btn-primary-custom btn-sm mt-2" data-bs-toggle="modal" data-bs-target="#novoCusto">
+                                <i class="bi bi-plus-lg"></i> Adicionar primeiro custo
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL NOVO CUSTO ===== -->
+<div class="modal fade" id="novoCusto" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Adicionar Custo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('produto_custo_novo', produto_id=produto.id) }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tipo de Custo</label>
+                        <select name="tipo_custo" class="form-select" required>
+                            <option value="tecido">Tecido</option>
+                            <option value="corte">Corte</option>
+                            <option value="costura">Costura</option>
+                            <option value="elastico">Elástico</option>
+                            <option value="aviamentos">Aviamentos</option>
+                            <option value="embalagem">Embalagem</option>
+                            <option value="mao_de_obra">Mão de Obra</option>
+                            <option value="transporte">Transporte</option>
+                            <option value="outros">Outros</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Descrição</label>
+                        <input type="text" name="descricao" class="form-control" placeholder="Ex: Tecido para 1 peça">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Valor (R$)</label>
+                                <input type="number" name="valor" class="form-control" step="0.01" min="0" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Quantidade</label>
+                                <input type="number" name="quantidade" class="form-control" step="0.01" min="0" value="1">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Unidade</label>
+                        <select name="unidade" class="form-select">
+                            <option value="UN">Unidade (UN)</option>
+                            <option value="MT">Metro (MT)</option>
+                            <option value="KG">Quilograma (KG)</option>
+                            <option value="CX">Caixa (CX)</option>
+                            <option value="CM">Centímetro (CM)</option>
+                            <option value="H">Hora (H)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Adicionar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAIS EDITAR CUSTO ===== -->
+{% for custo in custos %}
+<div class="modal fade" id="editarCusto{{ custo.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Custo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('produto_custo_editar', custo_id=custo.id) }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tipo de Custo</label>
+                        <select name="tipo_custo" class="form-select" required>
+                            <option value="tecido" {% if custo.tipo_custo == 'tecido' %}selected{% endif %}>Tecido</option>
+                            <option value="corte" {% if custo.tipo_custo == 'corte' %}selected{% endif %}>Corte</option>
+                            <option value="costura" {% if custo.tipo_custo == 'costura' %}selected{% endif %}>Costura</option>
+                            <option value="elastico" {% if custo.tipo_custo == 'elastico' %}selected{% endif %}>Elástico</option>
+                            <option value="aviamentos" {% if custo.tipo_custo == 'aviamentos' %}selected{% endif %}>Aviamentos</option>
+                            <option value="embalagem" {% if custo.tipo_custo == 'embalagem' %}selected{% endif %}>Embalagem</option>
+                            <option value="mao_de_obra" {% if custo.tipo_custo == 'mao_de_obra' %}selected{% endif %}>Mão de Obra</option>
+                            <option value="transporte" {% if custo.tipo_custo == 'transporte' %}selected{% endif %}>Transporte</option>
+                            <option value="outros" {% if custo.tipo_custo == 'outros' %}selected{% endif %}>Outros</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Descrição</label>
+                        <input type="text" name="descricao" class="form-control" value="{{ custo.descricao or '' }}">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Valor (R$)</label>
+                                <input type="number" name="valor" class="form-control" step="0.01" min="0" value="{{ custo.valor }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold">Quantidade</label>
+                                <input type="number" name="quantidade" class="form-control" step="0.01" min="0" value="{{ custo.quantidade }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Unidade</label>
+                        <select name="unidade" class="form-select">
+                            <option value="UN" {% if custo.unidade == 'UN' %}selected{% endif %}>Unidade (UN)</option>
+                            <option value="MT" {% if custo.unidade == 'MT' %}selected{% endif %}>Metro (MT)</option>
+                            <option value="KG" {% if custo.unidade == 'KG' %}selected{% endif %}>Quilograma (KG)</option>
+                            <option value="CX" {% if custo.unidade == 'CX' %}selected{% endif %}>Caixa (CX)</option>
+                            <option value="CM" {% if custo.unidade == 'CM' %}selected{% endif %}>Centímetro (CM)</option>
+                            <option value="H" {% if custo.unidade == 'H' %}selected{% endif %}>Hora (H)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary-custom">Atualizar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

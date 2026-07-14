@@ -992,22 +992,28 @@ def produto_editar(id):
             flash('O campo Nome é obrigatório!')
             return redirect(url_for('estoque'))
 
+        # SKU NÃO É ATUALIZADO (mantém o original)
         preco_custo = float(request.form.get('preco_custo', '0').replace(',', '.') or 0)
         preco_venda = float(request.form.get('preco_venda', '0').replace(',', '.') or 0)
         estoque_minimo = int(request.form.get('estoque_minimo', 0) or 0)
 
         sql = """
             UPDATE produtos SET 
-                nome = %s, descricao = %s, sku = %s, categoria = %s,
-                preco_custo = %s, preco_venda = %s, unidade = %s,
-                estoque_minimo = %s, status = %s, updated_at = NOW()
+                nome = %s, 
+                descricao = %s, 
+                categoria = %s,
+                preco_custo = %s, 
+                preco_venda = %s, 
+                unidade = %s,
+                estoque_minimo = %s, 
+                status = %s, 
+                updated_at = NOW()
             WHERE id = %s
         """
 
         if execute_sql(sql, (
             nome,
             request.form.get('descricao', ''),
-            request.form.get('sku', ''),
             request.form.get('categoria', ''),
             preco_custo,
             preco_venda,

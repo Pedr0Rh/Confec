@@ -132,13 +132,14 @@
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">Nome *</label>
-                                <input type="text" name="nome" class="form-control" required>
+                                <input type="text" name="nome" class="form-control" required id="nomeProduto" oninput="gerarSKU()">
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">SKU (automático)</label>
-                                <input type="text" class="form-control" value="Gerado automaticamente" disabled>
+                                <input type="text" name="sku" class="form-control" id="skuProduto" readonly style="background: #f0f0f0;">
+                                <small class="text-muted">Gerado automaticamente a partir do nome</small>
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -201,14 +202,14 @@
 
 <!-- ===== MODAIS AJUSTAR ESTOQUE ===== -->
 {% for produto in produtos %}
-<div class="modal fade" id="ajustarEstoque{{ produto.id }}" tabindex="-1">
+<div class="modal fade" id="ajustarEstoque{{ produit.id }}" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-arrow-left-right"></i> Ajustar Estoque - {{ produto.nome }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{ url_for('estoque_ajustar', produto_id=produto.id) }}">
+            <form method="POST" action="{{ url_for('estoque_ajustar', produto_id=produit.id) }}">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Tipo</label>
@@ -239,14 +240,14 @@
 </div>
 
 <!-- ===== MODAIS EDITAR PRODUTO ===== -->
-<div class="modal fade" id="editarProduto{{ produto.id }}" tabindex="-1">
+<div class="modal fade" id="editarProduto{{ produit.id }}" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-pencil"></i> Editar Produto</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{ url_for('produto_editar', id=produto.id) }}">
+            <form method="POST" action="{{ url_for('produto_editar', id=produit.id) }}">
                 <div class="modal-body">
                     <div class="row">
                         <div class="col-12 col-md-6">
@@ -258,7 +259,8 @@
                         <div class="col-12 col-md-6">
                             <div class="mb-3">
                                 <label class="form-label fw-semibold">SKU</label>
-                                <input type="text" name="sku" class="form-control" value="{{ produto.sku or '' }}">
+                                <input type="text" name="sku" class="form-control" value="{{ produto.sku or '' }}" readonly style="background: #f0f0f0;">
+                                <small class="text-muted">O SKU é gerado automaticamente e não pode ser alterado</small>
                             </div>
                         </div>
                         <div class="col-12 col-md-6">
@@ -324,7 +326,31 @@
 {% endfor %}
 
 <script>
-    // Fecha modais corretamente
+    // ===== FUNÇÃO PARA GERAR SKU AUTOMÁTICO =====
+    function gerarSKU() {
+        var nome = document.getElementById('nomeProduto').value;
+        var skuField = document.getElementById('skuProduto');
+        
+        if (nome.length >= 2) {
+            // Pegar as primeiras letras de cada palavra (até 4)
+            var palavras = nome.trim().toUpperCase().split(' ');
+            var skuBase = '';
+            
+            if (palavras.length >= 2) {
+                skuBase = palavras.slice(0, 4).map(function(p) { return p[0]; }).join('');
+            } else {
+                skuBase = nome.substring(0, 4).toUpperCase();
+            }
+            
+            // Adicionar um número aleatório de 3 dígitos
+            var numero = String(Math.floor(Math.random() * 900) + 100);
+            skuField.value = skuBase + '-' + numero;
+        } else {
+            skuField.value = '';
+        }
+    }
+    
+    // ===== FECHA MODAIS CORRETAMENTE =====
     document.addEventListener('DOMContentLoaded', function() {
         var modais = document.querySelectorAll('.modal');
         modais.forEach(function(modal) {
