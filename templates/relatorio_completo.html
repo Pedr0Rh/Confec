@@ -13,7 +13,42 @@
 </div>
 
 <!-- ========================================== -->
-<!-- 1. CARDS - RESUMO GERAL -->
+<!-- FILTROS POR PERÍODO -->
+<!-- ========================================== -->
+<div class="card p-3 mb-4">
+    <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">📅 Período</label>
+            <select class="form-select" id="periodoSelect" onchange="aplicarFiltro()">
+                <option value="7d" {% if periodo == '7d' %}selected{% endif %}>Últimos 7 dias</option>
+                <option value="30d" {% if periodo == '30d' %}selected{% endif %}>Últimos 30 dias</option>
+                <option value="90d" {% if periodo == '90d' %}selected{% endif %}>Últimos 90 dias</option>
+                <option value="ano" {% if periodo == 'ano' %}selected{% endif %}>Este ano</option>
+                <option value="personalizado" {% if periodo == 'personalizado' %}selected{% endif %}>Personalizado</option>
+            </select>
+        </div>
+        <div class="col-md-3" id="dataInicioDiv" style="{% if periodo != 'personalizado' %}display:none;{% endif %}">
+            <label class="form-label fw-semibold">Data Início</label>
+            <input type="date" class="form-control" id="dataInicio" value="{{ data_inicio }}">
+        </div>
+        <div class="col-md-3" id="dataFimDiv" style="{% if periodo != 'personalizado' %}display:none;{% endif %}">
+            <label class="form-label fw-semibold">Data Fim</label>
+            <input type="date" class="form-control" id="dataFim" value="{{ data_fim }}">
+        </div>
+        <div class="col-md-3">
+            <button class="btn btn-primary-custom w-100" onclick="aplicarFiltro()">
+                <i class="bi bi-funnel"></i> Aplicar Filtro
+            </button>
+        </div>
+    </div>
+    <div class="mt-2 text-center">
+        <span class="text-muted">Período selecionado: </span>
+        <span class="fw-bold">{{ periodo_label }}</span>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- CARDS - RESUMO GERAL -->
 <!-- ========================================== -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
@@ -32,7 +67,7 @@
     </div>
     <div class="col-6 col-md-3">
         <div class="card card-stat" style="border-color: #f39c12;">
-            <div class="stat-number">R$ {{ "%.2f"|format(resumo_geral.total_entradas or 0) }}</div>
+            <div class="stat-number">R$ {{ "%.2f"|format(analise_financeira.entradas or 0) }}</div>
             <div class="stat-label">Faturamento</div>
             <i class="bi bi-cash stat-icon"></i>
         </div>
@@ -47,7 +82,7 @@
 </div>
 
 <!-- ========================================== -->
-<!-- 2. ANÁLISE FINANCEIRA -->
+<!-- ANÁLISE FINANCEIRA -->
 <!-- ========================================== -->
 <div class="row g-4 mb-4">
     <div class="col-md-6">
@@ -95,7 +130,7 @@
     </div>
     <div class="col-md-6">
         <div class="card p-3">
-            <h5 class="fw-bold mb-3"><i class="bi bi-graph-up"></i> Produção (Últimos 30 dias)</h5>
+            <h5 class="fw-bold mb-3"><i class="bi bi-graph-up"></i> Produção</h5>
             <div class="row g-2">
                 <div class="col-6">
                     <div class="bg-light p-2 rounded text-center">
@@ -131,17 +166,17 @@
 </div>
 
 <!-- ========================================== -->
-<!-- 3. GRÁFICO - VENDAS ÚLTIMOS 30 DIAS -->
+<!-- GRÁFICO - VENDAS POR DIA -->
 <!-- ========================================== -->
 <div class="card p-3 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill"></i> Vendas - Últimos 30 Dias</h5>
+    <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill"></i> Vendas por Dia</h5>
     <div style="height: 300px;">
-        <canvas id="chartVendas30Dias"></canvas>
+        <canvas id="chartVendasPorDia"></canvas>
     </div>
 </div>
 
 <!-- ========================================== -->
-<!-- 4. GRÁFICO - VENDAS MENSAIS -->
+<!-- GRÁFICO - VENDAS MENSAIS -->
 <!-- ========================================== -->
 <div class="card p-3 mb-4">
     <h5 class="fw-bold mb-3"><i class="bi bi-graph-up-arrow"></i> Evolução Mensal de Vendas</h5>
@@ -151,7 +186,7 @@
 </div>
 
 <!-- ========================================== -->
-<!-- 5. TOP CLIENTES -->
+<!-- TOP CLIENTES -->
 <!-- ========================================== -->
 <div class="card mb-4">
     <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
@@ -191,7 +226,7 @@
 </div>
 
 <!-- ========================================== -->
-<!-- 6. PRODUTOS MAIS VENDIDOS -->
+<!-- PRODUTOS MAIS VENDIDOS -->
 <!-- ========================================== -->
 <div class="card mb-4">
     <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
@@ -245,7 +280,7 @@
 </div>
 
 <!-- ========================================== -->
-<!-- 7. PRODUTOS COM ESTOQUE BAIXO -->
+<!-- PRODUTOS COM ESTOQUE BAIXO -->
 <!-- ========================================== -->
 {% if produtos_estoque_baixo %}
 <div class="card mb-4" style="border-left: 4px solid #e74c3c;">
@@ -283,7 +318,7 @@
 {% endif %}
 
 <!-- ========================================== -->
-<!-- 8. PRODUÇÃO POR ETAPA -->
+<!-- PRODUÇÃO POR ETAPA -->
 <!-- ========================================== -->
 <div class="card mb-4">
     <div class="card-header bg-transparent">
@@ -322,7 +357,7 @@
 </div>
 
 <!-- ========================================== -->
-<!-- 9. ÚLTIMAS VENDAS -->
+<!-- ÚLTIMAS VENDAS -->
 <!-- ========================================== -->
 <div class="card mb-4">
     <div class="card-header bg-transparent">
@@ -359,48 +394,7 @@
 </div>
 
 <!-- ========================================== -->
-<!-- 10. ÚLTIMAS MOVIMENTAÇÕES -->
-<!-- ========================================== -->
-<div class="card mb-4">
-    <div class="card-header bg-transparent">
-        <h5 class="fw-bold mb-0"><i class="bi bi-arrow-left-right"></i> Últimas Movimentações de Estoque</h5>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Produto</th>
-                        <th>Tipo</th>
-                        <th>Qtd</th>
-                        <th>Descrição</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for mov in ultimas_movimentacoes %}
-                    <tr>
-                        <td>{{ mov.data_movimentacao.strftime('%d/%m/%Y %H:%M') if mov.data_movimentacao else '-' }}</td>
-                        <td>{{ mov.produto_nome or '-' }}</td>
-                        <td>
-                            <span class="badge {% if mov.tipo == 'entrada' %}bg-success{% else %}bg-danger{% endif %}">
-                                {{ mov.tipo|upper }}
-                            </span>
-                        </td>
-                        <td>{{ mov.quantidade }}</td>
-                        <td>{{ mov.descricao or '-' }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" class="text-center py-3">Nenhuma movimentação</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- 11. CATEGORIAS MAIS VENDIDAS -->
+<!-- CATEGORIAS MAIS VENDIDAS -->
 <!-- ========================================== -->
 <div class="card mb-4">
     <div class="card-header bg-transparent">
@@ -435,15 +429,46 @@
 </div>
 
 <!-- ========================================== -->
-<!-- SCRIPTS PARA GRÁFICOS -->
+<!-- SCRIPTS -->
 <!-- ========================================== -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+// ===== FUNÇÃO PARA APLICAR FILTRO =====
+function aplicarFiltro() {
+    var periodo = document.getElementById('periodoSelect').value;
+    var url = '/relatorio?periodo=' + periodo;
+    
+    if (periodo === 'personalizado') {
+        var dataInicio = document.getElementById('dataInicio').value;
+        var dataFim = document.getElementById('dataFim').value;
+        if (dataInicio && dataFim) {
+            url += '&data_inicio=' + dataInicio + '&data_fim=' + dataFim;
+        } else {
+            alert('Selecione as datas de início e fim!');
+            return;
+        }
+    }
+    
+    window.location.href = url;
+}
+
+// ===== MOSTRAR/ESCONDER CAMPOS PERSONALIZADOS =====
+document.getElementById('periodoSelect').addEventListener('change', function() {
+    if (this.value === 'personalizado') {
+        document.getElementById('dataInicioDiv').style.display = 'block';
+        document.getElementById('dataFimDiv').style.display = 'block';
+    } else {
+        document.getElementById('dataInicioDiv').style.display = 'none';
+        document.getElementById('dataFimDiv').style.display = 'none';
+    }
+});
+
+// ===== GRÁFICOS =====
 document.addEventListener('DOMContentLoaded', function() {
-    // ===== GRÁFICO 1: VENDAS ÚLTIMOS 30 DIAS =====
-    const ctx1 = document.getElementById('chartVendas30Dias');
+    // GRÁFICO 1: VENDAS POR DIA
+    const ctx1 = document.getElementById('chartVendasPorDia');
     if (ctx1) {
-        const dados = {{ vendas_30_dias|tojson }};
+        const dados = {{ vendas_por_dia|tojson }};
         const labels = dados.map(d => d.dia);
         const valores = dados.map(d => d.total);
         const quantidades = dados.map(d => d.quantidade);
@@ -492,7 +517,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // ===== GRÁFICO 2: VENDAS MENSAIS =====
+    // GRÁFICO 2: VENDAS MENSAIS
     const ctx2 = document.getElementById('chartVendasMensais');
     if (ctx2) {
         const dados = {{ vendas_mensais|tojson }};
