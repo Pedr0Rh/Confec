@@ -1628,14 +1628,13 @@ def financeiro_delete(id):
 
     return redirect(url_for('financeiro'))
 
-# ==========================================
-# RELATÓRIO
-# ==========================================
 
 # ==========================================
-# RELATÓRIO COMPLETO COM ANÁLISES
+#  APP IOS
 # ==========================================
-
+@app.route('/manifest.json')
+def manifest():
+    return send_file('static/manifest.json', mimetype='application/json')
 # ==========================================
 # RELATÓRIO COMPLETO COM FILTROS POR PERÍODO
 # ==========================================
