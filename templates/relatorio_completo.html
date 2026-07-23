@@ -2,13 +2,16 @@
 {% block content %}
 <div class="page-header d-flex justify-content-between align-items-center flex-wrap">
     <div>
-        <h2><i class="bi bi-file-earmark-text"></i> Relatório Completo</h2>
-        <p class="text-muted">Análises detalhadas, gráficos e métricas do seu negócio</p>
+        <h2><i class="bi bi-file-earmark-bar-graph"></i> Relatório Completo</h2>
+        <p class="text-muted">Análise detalhada do seu negócio com filtros por período</p>
     </div>
-    <div>
-        <a href="{{ url_for('relatorio_pdf') }}" class="btn btn-primary-custom" target="_blank">
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('relatorio_pdf') }}" class="btn btn-danger" target="_blank">
             <i class="bi bi-filetype-pdf"></i> Exportar PDF
         </a>
+        <button class="btn btn-success" onclick="window.print()">
+            <i class="bi bi-printer"></i> Imprimir
+        </button>
     </div>
 </div>
 
@@ -21,8 +24,11 @@
             <label class="form-label fw-semibold">📅 Período</label>
             <select class="form-select" id="periodoSelect" onchange="aplicarFiltro()">
                 <option value="7d" {% if periodo == '7d' %}selected{% endif %}>Últimos 7 dias</option>
+                <option value="15d" {% if periodo == '15d' %}selected{% endif %}>Últimos 15 dias</option>
                 <option value="30d" {% if periodo == '30d' %}selected{% endif %}>Últimos 30 dias</option>
+                <option value="60d" {% if periodo == '60d' %}selected{% endif %}>Últimos 60 dias</option>
                 <option value="90d" {% if periodo == '90d' %}selected{% endif %}>Últimos 90 dias</option>
+                <option value="mes_atual" {% if periodo == 'mes_atual' %}selected{% endif %}>Mês atual</option>
                 <option value="ano" {% if periodo == 'ano' %}selected{% endif %}>Este ano</option>
                 <option value="personalizado" {% if periodo == 'personalizado' %}selected{% endif %}>Personalizado</option>
             </select>
@@ -54,7 +60,7 @@
     <div class="col-6 col-md-3">
         <div class="card card-stat" style="border-color: #3498db;">
             <div class="stat-number">{{ resumo_geral.total_produtos or 0 }}</div>
-            <div class="stat-label">Produtos</div>
+            <div class="stat-label">Produtos Ativos</div>
             <i class="bi bi-box-seam stat-icon"></i>
         </div>
     </div>
@@ -68,14 +74,14 @@
     <div class="col-6 col-md-3">
         <div class="card card-stat" style="border-color: #f39c12;">
             <div class="stat-number">R$ {{ "%.2f"|format(analise_financeira.entradas or 0) }}</div>
-            <div class="stat-label">Faturamento</div>
+            <div class="stat-label">Faturamento no Período</div>
             <i class="bi bi-cash stat-icon"></i>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="card card-stat" style="border-color: #e74c3c;">
             <div class="stat-number">{{ resumo_geral.producoes_andamento or 0 }}</div>
-            <div class="stat-label">Produções Ativas</div>
+            <div class="stat-label">Produções em Andamento</div>
             <i class="bi bi-gear stat-icon"></i>
         </div>
     </div>
@@ -89,16 +95,24 @@
         <div class="card p-3">
             <h5 class="fw-bold mb-3"><i class="bi bi-pie-chart"></i> Resumo Financeiro</h5>
             <div class="row g-2">
-                <div class="col-6">
-                    <div class="bg-light p-2 rounded text-center">
-                        <div style="font-size: 0.7rem; color: #6c757d;">Entradas</div>
+                <div class="col-4">
+                    <div class="bg-light p-2 rounded text-center" style="background: #d4edda !important;">
+                        <div style="font-size: 0.7rem; color: #155724;">Entradas</div>
                         <div class="fw-bold text-success">R$ {{ "%.2f"|format(analise_financeira.entradas or 0) }}</div>
                     </div>
                 </div>
-                <div class="col-6">
-                    <div class="bg-light p-2 rounded text-center">
-                        <div style="font-size: 0.7rem; color: #6c757d;">Saídas</div>
+                <div class="col-4">
+                    <div class="bg-light p-2 rounded text-center" style="background: #f8d7da !important;">
+                        <div style="font-size: 0.7rem; color: #721c24;">Saídas</div>
                         <div class="fw-bold text-danger">R$ {{ "%.2f"|format(analise_financeira.saidas or 0) }}</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="bg-light p-2 rounded text-center" style="background: #cce5ff !important;">
+                        <div style="font-size: 0.7rem; color: #004085;">Saldo</div>
+                        <div class="fw-bold {% if (analise_financeira.entradas or 0) > (analise_financeira.saidas or 0) %}text-success{% else %}text-danger{% endif %}">
+                            R$ {{ "%.2f"|format((analise_financeira.entradas or 0) - (analise_financeira.saidas or 0)) }}
+                        </div>
                     </div>
                 </div>
                 <div class="col-4">
@@ -120,17 +134,11 @@
                     </div>
                 </div>
             </div>
-            <div class="mt-2 text-center">
-                <span class="fw-bold">Saldo: </span>
-                <span class="{% if (analise_financeira.entradas or 0) > (analise_financeira.saidas or 0) %}text-success{% else %}text-danger{% endif %}">
-                    R$ {{ "%.2f"|format((analise_financeira.entradas or 0) - (analise_financeira.saidas or 0)) }}
-                </span>
-            </div>
         </div>
     </div>
     <div class="col-md-6">
         <div class="card p-3">
-            <h5 class="fw-bold mb-3"><i class="bi bi-graph-up"></i> Produção</h5>
+            <h5 class="fw-bold mb-3"><i class="bi bi-graph-up"></i> Análise de Produção</h5>
             <div class="row g-2">
                 <div class="col-6">
                     <div class="bg-light p-2 rounded text-center">
@@ -166,115 +174,177 @@
 </div>
 
 <!-- ========================================== -->
-<!-- GRÁFICO - VENDAS POR DIA -->
+<!-- GRÁFICOS -->
 <!-- ========================================== -->
-<div class="card p-3 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill"></i> Vendas por Dia</h5>
-    <div style="height: 300px;">
-        <canvas id="chartVendasPorDia"></canvas>
+<div class="row g-4 mb-4">
+    <div class="col-md-8">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill"></i> Vendas por Dia</h5>
+            <div style="height: 300px;">
+                <canvas id="chartVendasPorDia"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-pie-chart-fill"></i> Vendas por Categoria</h5>
+            <div style="height: 300px;">
+                <canvas id="chartCategorias"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-graph-up-arrow"></i> Evolução Mensal</h5>
+            <div style="height: 250px;">
+                <canvas id="chartVendasMensais"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-clock"></i> Vendas por Dia da Semana</h5>
+            <div style="height: 250px;">
+                <canvas id="chartDiaSemana"></canvas>
+            </div>
+        </div>
     </div>
 </div>
 
 <!-- ========================================== -->
-<!-- GRÁFICO - VENDAS MENSAIS -->
-<!-- ========================================== -->
-<div class="card p-3 mb-4">
-    <h5 class="fw-bold mb-3"><i class="bi bi-graph-up-arrow"></i> Evolução Mensal de Vendas</h5>
-    <div style="height: 300px;">
-        <canvas id="chartVendasMensais"></canvas>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- TOP CLIENTES -->
+<!-- RESUMO POR CATEGORIA -->
 <!-- ========================================== -->
 <div class="card mb-4">
     <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-        <h5 class="fw-bold mb-0"><i class="bi bi-trophy"></i> Top 10 Clientes</h5>
-        <span class="badge bg-primary">{{ top_clientes|length }}</span>
+        <h5 class="fw-bold mb-0"><i class="bi bi-tags"></i> Resumo por Categoria</h5>
+        <span class="badge bg-primary">{{ resumo_por_categoria|length }}</span>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover table-sm">
                 <thead>
                     <tr>
-                        <th>#</th>
-                        <th>Cliente</th>
-                        <th>Vendas</th>
-                        <th>Produtos</th>
-                        <th>Ticket Médio</th>
-                        <th>Total Gasto</th>
+                        <th>Categoria</th>
+                        <th>Total Transações</th>
+                        <th>Entradas</th>
+                        <th>Saídas</th>
+                        <th>Saldo</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for cliente in top_clientes %}
+                    {% for cat in resumo_por_categoria %}
                     <tr>
-                        <td><span class="badge bg-secondary">{{ loop.index }}</span></td>
-                        <td><strong>{{ cliente.nome }}</strong></td>
-                        <td>{{ cliente.total_vendas }}</td>
-                        <td>{{ cliente.total_produtos }}</td>
-                        <td>R$ {{ "%.2f"|format(cliente.ticket_medio) }}</td>
-                        <td class="text-gold fw-bold">R$ {{ "%.2f"|format(cliente.total_gasto) }}</td>
+                        <td><strong>{{ cat.categoria }}</strong></td>
+                        <td>{{ cat.total }}</td>
+                        <td class="text-success">R$ {{ "%.2f"|format(cat.entradas) }}</td>
+                        <td class="text-danger">R$ {{ "%.2f"|format(cat.saidas) }}</td>
+                        <td class="{% if cat.saldo >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                            R$ {{ "%.2f"|format(cat.saldo) }}
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="6" class="text-center py-3">Nenhum cliente com vendas</td></tr>
+                    <tr><td colspan="5" class="text-center py-3">Nenhuma categoria encontrada</td></tr>
                     {% endfor %}
                 </tbody>
+                <tfoot>
+                    <tr class="fw-bold" style="background: #f8f9fa;">
+                        <td><strong>TOTAL</strong></td>
+                        <td>{{ resumo_por_categoria|sum(attribute='total') }}</td>
+                        <td class="text-success">R$ {{ "%.2f"|format(analise_financeira.entradas or 0) }}</td>
+                        <td class="text-danger">R$ {{ "%.2f"|format(analise_financeira.saidas or 0) }}</td>
+                        <td class="{% if (analise_financeira.entradas or 0) >= (analise_financeira.saidas or 0) %}text-success{% else %}text-danger{% endif %}">
+                            R$ {{ "%.2f"|format((analise_financeira.entradas or 0) - (analise_financeira.saidas or 0)) }}
+                        </td>
+                    </tr>
+                </tfoot>
             </table>
         </div>
     </div>
 </div>
 
 <!-- ========================================== -->
-<!-- PRODUTOS MAIS VENDIDOS -->
+<!-- TOP CLIENTES -->
 <!-- ========================================== -->
-<div class="card mb-4">
-    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-        <h5 class="fw-bold mb-0"><i class="bi bi-box"></i> Produtos Mais Vendidos</h5>
-        <span class="badge bg-primary">{{ produtos_mais_vendidos|length }}</span>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Produto</th>
-                        <th>SKU</th>
-                        <th>Qtd</th>
-                        <th>Faturamento</th>
-                        <th>Margem</th>
-                        <th>Estoque</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for produto in produtos_mais_vendidos %}
-                    <tr>
-                        <td><span class="badge bg-secondary">{{ loop.index }}</span></td>
-                        <td><strong>{{ produto.nome }}</strong></td>
-                        <td>{{ produto.sku or '-' }}</td>
-                        <td>{{ produto.total_vendido }}</td>
-                        <td>R$ {{ "%.2f"|format(produto.total_faturamento) }}</td>
-                        <td>
-                            <span class="{% if produto.margem_lucro_percentual > 30 %}text-success{% elif produto.margem_lucro_percentual > 15 %}text-warning{% else %}text-danger{% endif %}">
-                                {{ "%.1f"|format(produto.margem_lucro_percentual or 0) }}%
-                            </span>
-                        </td>
-                        <td>
-                            {% if produto.estoque_atual <= 5 %}
-                                <span class="badge bg-danger">{{ produto.estoque_atual }}</span>
-                            {% elif produto.estoque_atual <= 20 %}
-                                <span class="badge bg-warning">{{ produto.estoque_atual }}</span>
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0"><i class="bi bi-trophy"></i> Top 10 Clientes</h5>
+                <span class="badge bg-primary">{{ top_clientes|length }}</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Cliente</th>
+                                <th>Vendas</th>
+                                <th>Total Gasto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cliente in top_clientes %}
+                            <tr>
+                                <td><span class="badge bg-secondary">{{ loop.index }}</span></td>
+                                <td>{{ cliente.nome }}</td>
+                                <td>{{ cliente.total_vendas }}</td>
+                                <td class="fw-bold text-success">R$ {{ "%.2f"|format(cliente.total_gasto) }}</td>
+                            </tr>
                             {% else %}
-                                <span class="badge bg-success">{{ produto.estoque_atual }}</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="7" class="text-center py-3">Nenhum produto vendido</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                            <tr><td colspan="4" class="text-center py-3">Nenhum cliente com vendas</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0"><i class="bi bi-box"></i> Top 10 Produtos Mais Vendidos</h5>
+                <span class="badge bg-primary">{{ produtos_mais_vendidos|length }}</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Produto</th>
+                                <th>Qtd Vendida</th>
+                                <th>Faturamento</th>
+                                <th>Estoque</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for produto in produtos_mais_vendidos %}
+                            <tr>
+                                <td><span class="badge bg-secondary">{{ loop.index }}</span></td>
+                                <td><strong>{{ produto.nome }}</strong></td>
+                                <td>{{ produto.total_vendido }}</td>
+                                <td class="text-success fw-bold">R$ {{ "%.2f"|format(produto.total_faturamento) }}</td>
+                                <td>
+                                    {% if produto.estoque_atual <= 5 %}
+                                        <span class="badge bg-danger">{{ produto.estoque_atual }}</span>
+                                    {% elif produto.estoque_atual <= 20 %}
+                                        <span class="badge bg-warning">{{ produto.estoque_atual }}</span>
+                                    {% else %}
+                                        <span class="badge bg-success">{{ produto.estoque_atual }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center py-3">Nenhum produto vendido</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -290,11 +360,10 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover table-sm">
                 <thead>
                     <tr>
                         <th>Produto</th>
-                        <th>SKU</th>
                         <th>Atual</th>
                         <th>Mínimo</th>
                         <th>Déficit</th>
@@ -303,8 +372,7 @@
                 <tbody>
                     {% for produto in produtos_estoque_baixo %}
                     <tr>
-                        <td><strong>{{ produto.nome }}</strong></td>
-                        <td>{{ produto.sku or '-' }}</td>
+                        <td>{{ produto.nome }}</td>
                         <td><span class="badge bg-danger">{{ produto.estoque_atual }}</span></td>
                         <td>{{ produto.estoque_minimo }}</td>
                         <td><span class="text-danger">{{ produto.deficit }}</span></td>
@@ -326,13 +394,12 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover table-sm">
                 <thead>
                     <tr>
                         <th>Etapa</th>
                         <th>Ordens</th>
                         <th>Peças</th>
-                        <th>Média</th>
                         <th>Finalizadas</th>
                         <th>Em Andamento</th>
                     </tr>
@@ -343,49 +410,11 @@
                         <td><strong>{{ etapa.etapa }}</strong></td>
                         <td>{{ etapa.qtd_producoes }}</td>
                         <td>{{ etapa.total_pecas }}</td>
-                        <td>{{ "%.1f"|format(etapa.media_pecas) }}</td>
                         <td><span class="badge bg-success">{{ etapa.finalizadas }}</span></td>
                         <td><span class="badge bg-warning">{{ etapa.em_andamento }}</span></td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="6" class="text-center py-3">Nenhuma produção</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================== -->
-<!-- ÚLTIMAS VENDAS -->
-<!-- ========================================== -->
-<div class="card mb-4">
-    <div class="card-header bg-transparent">
-        <h5 class="fw-bold mb-0"><i class="bi bi-clock-history"></i> Últimas 20 Vendas</h5>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Cliente</th>
-                        <th>Produto</th>
-                        <th>Qtd</th>
-                        <th>Valor</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for venda in ultimas_vendas %}
-                    <tr>
-                        <td>{{ venda.data.strftime('%d/%m/%Y %H:%M') if venda.data else '-' }}</td>
-                        <td>{{ venda.cliente_nome or '-' }}</td>
-                        <td>{{ venda.produto_nome or '-' }}</td>
-                        <td>{{ venda.quantidade or 0 }}</td>
-                        <td class="text-success fw-bold">R$ {{ "%.2f"|format(venda.valor) }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" class="text-center py-3">Nenhuma venda</td></tr>
+                    <tr><td colspan="5" class="text-center py-3">Nenhuma produção</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -402,7 +431,7 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover">
+            <table class="table table-hover table-sm">
                 <thead>
                     <tr>
                         <th>Categoria</th>
@@ -429,107 +458,243 @@
 </div>
 
 <!-- ========================================== -->
+<!-- ÚLTIMAS VENDAS E DESPESAS -->
+<!-- ========================================== -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-transparent">
+                <h5 class="fw-bold mb-0"><i class="bi bi-clock-history"></i> Últimas Vendas</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Cliente</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for venda in ultimas_vendas %}
+                            <tr>
+                                <td>{{ venda.data.strftime('%d/%m/%Y %H:%M') if venda.data else '-' }}</td>
+                                <td>{{ venda.cliente_nome or '-' }}</td>
+                                <td class="text-success fw-bold">R$ {{ "%.2f"|format(venda.valor) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center py-3">Nenhuma venda</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-transparent">
+                <h5 class="fw-bold mb-0"><i class="bi bi-clock-history"></i> Últimas Despesas</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Descrição</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for despesa in ultimas_despesas %}
+                            <tr>
+                                <td>{{ despesa.data.strftime('%d/%m/%Y %H:%M') if despesa.data else '-' }}</td>
+                                <td>{{ despesa.descricao }}</td>
+                                <td class="text-danger fw-bold">R$ {{ "%.2f"|format(despesa.valor) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-center py-3">Nenhuma despesa</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MOVIMENTAÇÕES DE ESTOQUE -->
+<!-- ========================================== -->
+<div class="card mb-4">
+    <div class="card-header bg-transparent">
+        <h5 class="fw-bold mb-0"><i class="bi bi-arrow-left-right"></i> Movimentações de Estoque</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Produto</th>
+                        <th>Tipo</th>
+                        <th>Qtd</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for mov in movimentacoes_estoque %}
+                    <tr>
+                        <td>{{ mov.data_movimentacao.strftime('%d/%m/%Y %H:%M') if mov.data_movimentacao else '-' }}</td>
+                        <td>{{ mov.produto_nome or '-' }}</td>
+                        <td>
+                            <span class="badge {% if mov.tipo == 'entrada' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ 'Entrada' if mov.tipo == 'entrada' else 'Saída' }}
+                            </span>
+                        </td>
+                        <td>{{ mov.quantidade }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-3">Nenhuma movimentação</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
 <!-- SCRIPTS -->
 <!-- ========================================== -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// ===== FUNÇÃO PARA APLICAR FILTRO =====
-function aplicarFiltro() {
-    var periodo = document.getElementById('periodoSelect').value;
-    var url = '/relatorio?periodo=' + periodo;
-    
-    if (periodo === 'personalizado') {
-        var dataInicio = document.getElementById('dataInicio').value;
-        var dataFim = document.getElementById('dataFim').value;
-        if (dataInicio && dataFim) {
-            url += '&data_inicio=' + dataInicio + '&data_fim=' + dataFim;
-        } else {
-            alert('Selecione as datas de início e fim!');
-            return;
+    // ===== FUNÇÃO PARA APLICAR FILTRO =====
+    function aplicarFiltro() {
+        var periodo = document.getElementById('periodoSelect').value;
+        var url = '/relatorio?periodo=' + periodo;
+        
+        if (periodo === 'personalizado') {
+            var dataInicio = document.getElementById('dataInicio').value;
+            var dataFim = document.getElementById('dataFim').value;
+            if (dataInicio && dataFim) {
+                url += '&data_inicio=' + dataInicio + '&data_fim=' + dataFim;
+            } else {
+                alert('Selecione as datas de início e fim!');
+                return;
+            }
         }
+        
+        window.location.href = url;
     }
-    
-    window.location.href = url;
-}
 
-// ===== MOSTRAR/ESCONDER CAMPOS PERSONALIZADOS =====
-document.getElementById('periodoSelect').addEventListener('change', function() {
-    if (this.value === 'personalizado') {
-        document.getElementById('dataInicioDiv').style.display = 'block';
-        document.getElementById('dataFimDiv').style.display = 'block';
-    } else {
-        document.getElementById('dataInicioDiv').style.display = 'none';
-        document.getElementById('dataFimDiv').style.display = 'none';
-    }
-});
+    // ===== MOSTRAR/ESCONDER CAMPOS PERSONALIZADOS =====
+    document.getElementById('periodoSelect').addEventListener('change', function() {
+        if (this.value === 'personalizado') {
+            document.getElementById('dataInicioDiv').style.display = 'block';
+            document.getElementById('dataFimDiv').style.display = 'block';
+        } else {
+            document.getElementById('dataInicioDiv').style.display = 'none';
+            document.getElementById('dataFimDiv').style.display = 'none';
+        }
+    });
 
-// ===== GRÁFICOS =====
-document.addEventListener('DOMContentLoaded', function() {
-    // GRÁFICO 1: VENDAS POR DIA
-    const ctx1 = document.getElementById('chartVendasPorDia');
-    if (ctx1) {
-        const dados = {{ vendas_por_dia|tojson }};
-        const labels = dados.map(d => d.dia);
-        const valores = dados.map(d => d.total);
-        const quantidades = dados.map(d => d.quantidade);
+    // ==========================================
+    // GRÁFICOS
+    // ==========================================
+    document.addEventListener('DOMContentLoaded', function() {
+        // 1. VENDAS POR DIA
+        const ctx1 = document.getElementById('chartVendasPorDia');
+        if (ctx1) {
+            const dados = {{ vendas_por_dia|tojson|safe }};
+            const labels = dados.map(d => d.dia);
+            const valores = dados.map(d => d.total);
+            const quantidades = dados.map(d => d.quantidade);
 
-        new Chart(ctx1, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
-                        label: 'Valor Vendido (R$)',
-                        data: valores,
-                        backgroundColor: 'rgba(39, 174, 96, 0.7)',
-                        borderColor: '#27ae60',
-                        borderWidth: 1,
-                        yAxisID: 'y'
-                    },
-                    {
-                        label: 'Quantidade de Vendas',
-                        data: quantidades,
-                        backgroundColor: 'rgba(233, 69, 96, 0.5)',
-                        borderColor: '#e94560',
-                        borderWidth: 1,
-                        yAxisID: 'y1'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'top', labels: { font: { size: 10 } } }
+            new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Valor Vendido (R$)',
+                            data: valores,
+                            backgroundColor: 'rgba(39, 174, 96, 0.7)',
+                            borderColor: '#27ae60',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Quantidade de Vendas',
+                            data: quantidades,
+                            backgroundColor: 'rgba(233, 69, 96, 0.5)',
+                            borderColor: '#e94560',
+                            borderWidth: 1,
+                            yAxisID: 'y1'
+                        }
+                    ]
                 },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { callback: function(value) { return 'R$ ' + value.toFixed(0); } }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { font: { size: 10 } } }
                     },
-                    y1: {
-                        position: 'right',
-                        beginAtZero: true,
-                        grid: { drawOnChartArea: false }
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: function(value) { return 'R$ ' + value.toFixed(0); } }
+                        },
+                        y1: {
+                            position: 'right',
+                            beginAtZero: true,
+                            grid: { drawOnChartArea: false }
+                        }
                     }
                 }
-            }
-        });
-    }
+            });
+        }
 
-    // GRÁFICO 2: VENDAS MENSAIS
-    const ctx2 = document.getElementById('chartVendasMensais');
-    if (ctx2) {
-        const dados = {{ vendas_mensais|tojson }};
-        const labels = dados.map(d => d.mes);
-        const valores = dados.map(d => d.total);
+        // 2. VENDAS POR CATEGORIA
+        const ctx2 = document.getElementById('chartCategorias');
+        if (ctx2) {
+            const dados = {{ categorias_mais_vendidas|tojson|safe }};
+            const labels = dados.map(d => d.categoria);
+            const valores = dados.map(d => d.total_faturamento);
+            const cores = ['#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
-        new Chart(ctx2, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    {
+            new Chart(ctx2, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: valores,
+                        backgroundColor: cores.slice(0, labels.length),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right', labels: { font: { size: 9 } } }
+                    }
+                }
+            });
+        }
+
+        // 3. EVOLUÇÃO MENSAL
+        const ctx3 = document.getElementById('chartVendasMensais');
+        if (ctx3) {
+            const dados = {{ vendas_mensais|tojson|safe }};
+            const labels = dados.map(d => d.mes);
+            const valores = dados.map(d => d.total);
+
+            new Chart(ctx3, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
                         label: 'Vendas Mensais (R$)',
                         data: valores,
                         backgroundColor: 'rgba(52, 152, 219, 0.2)',
@@ -537,24 +702,189 @@ document.addEventListener('DOMContentLoaded', function() {
                         borderWidth: 3,
                         fill: true,
                         tension: 0.4
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'top', labels: { font: { size: 10 } } }
+                    }]
                 },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { callback: function(value) { return 'R$ ' + value.toFixed(0); } }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { font: { size: 10 } } }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: function(value) { return 'R$ ' + value.toFixed(0); } }
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
+
+        // 4. VENDAS POR DIA DA SEMANA
+        const ctx4 = document.getElementById('chartDiaSemana');
+        if (ctx4) {
+            const dados = {{ vendas_por_dia_semana|tojson|safe }};
+            const labels = dados.map(d => d.dia_semana);
+            const valores = dados.map(d => d.total_vendas);
+
+            new Chart(ctx4, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Vendas por Dia (R$)',
+                        data: valores,
+                        backgroundColor: 'rgba(155, 89, 182, 0.7)',
+                        borderColor: '#9b59b6',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: function(value) { return 'R$ ' + value.toFixed(0); } }
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    // ==========================================
+    // IMPRIMIR RELATÓRIO
+    // ==========================================
+    function imprimirRelatorio() {
+        window.print();
     }
-});
 </script>
+
+<style>
+    /* ===== CORREÇÃO PARA CARDS COM NÚMEROS GRANDES ===== */
+    .card-stat {
+        position: relative;
+        overflow: hidden;
+        min-height: 90px;
+        padding: 15px 18px;
+        border-radius: 12px;
+        background: white;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        transition: transform 0.2s;
+    }
+    
+    .card-stat .stat-number {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--primary-color, #1a1a2e);
+        line-height: 1.2;
+        word-break: break-word;
+        max-width: 80%;
+    }
+    
+    .card-stat .stat-label {
+        color: #6c757d;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 2px;
+        max-width: 80%;
+    }
+    
+    .card-stat .stat-icon {
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 2.2rem;
+        opacity: 0.15;
+        pointer-events: none;
+        line-height: 1;
+    }
+    
+    /* Para números muito grandes */
+    .card-stat .stat-number.large {
+        font-size: 1.2rem;
+    }
+    
+    /* Responsivo */
+    @media (max-width: 768px) {
+        .card-stat .stat-number {
+            font-size: 1.2rem;
+            max-width: 75%;
+        }
+        .card-stat .stat-icon {
+            font-size: 1.6rem;
+            right: 10px;
+        }
+        .card-stat {
+            padding: 10px 14px;
+            min-height: 70px;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .card-stat .stat-number {
+            font-size: 1rem;
+            max-width: 70%;
+        }
+        .card-stat .stat-icon {
+            font-size: 1.3rem;
+            right: 8px;
+        }
+        .card-stat {
+            padding: 8px 10px;
+            min-height: 60px;
+        }
+        .card-stat .stat-label {
+            font-size: 0.55rem;
+        }
+    }
+
+    @media print {
+        .btn, .btn-group, .no-print, .card .card-header .btn {
+            display: none !important;
+        }
+        .card {
+            break-inside: avoid;
+            page-break-inside: avoid;
+            border: 1px solid #ddd !important;
+            box-shadow: none !important;
+        }
+        .page-header {
+            margin-bottom: 20px;
+        }
+        body {
+            padding: 10px;
+            background: white !important;
+        }
+        .main-content {
+            padding: 0 !important;
+        }
+        .card-stat {
+            border: 1px solid #ddd !important;
+        }
+        .table thead th {
+            background: #f8f9fa !important;
+            color: #333 !important;
+        }
+        .alert {
+            display: none !important;
+        }
+        .sidebar {
+            display: none !important;
+        }
+        .app-container {
+            display: block !important;
+        }
+        .main-content {
+            margin-left: 0 !important;
+            width: 100% !important;
+        }
+    }
+</style>
 {% endblock %}

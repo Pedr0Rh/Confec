@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-cash-stack"></i> Fechamento de Fluxo de Caixa</h2>
+        <p class="text-muted">Feche o mês para arquivar as movimentações e iniciar o próximo mês</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- ===== SELETOR DE MÊS ===== -->
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-calendar-plus"></i> Fechar Mês</h5>
+            <p class="text-muted small">
+                <i class="bi bi-info-circle"></i> 
+                Ao fechar o mês, um <strong>snapshot</strong> será salvo com todas as transações.
+                Você poderá ver o histórico de meses fechados.
+            </p>
+            
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Selecione o Mês</label>
+                <select class="form-select" id="selectMes" required>
+                    <option value="">-- Selecione --</option>
+                    {% for item in meses_disponiveis %}
+                        {% if not item.fechado and item.tem_transacoes_abertas %}
+                            <option value="{{ item.mes.year }}-{{ item.mes.month }}">
+                                {{ item.label }}
+                                <span class="badge bg-success ms-1">Com movimentos</span>
+                            </option>
+                        {% elif item.fechado %}
+                            <option value="{{ item.mes.year }}-{{ item.mes.month }}" disabled>
+                                {{ item.label }} 🔒 Fechado
+                            </option>
+                        {% elif not item.tem_transacoes_abertas %}
+                            <option value="{{ item.mes.year }}-{{ item.mes.month }}" disabled>
+                                {{ item.label }} ⚠️ Sem movimentos
+                            </option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+                {% if meses_disponiveis|selectattr('fechado', 'equalto', False)|selectattr('tem_transacoes_abertas', 'equalto', True)|list|length == 0 %}
+                    <div class="text-success small mt-1">
+                        <i class="bi bi-check-circle"></i> Todos os meses com movimentos estão fechados!
+                    </div>
+                {% endif %}
+            </div>
+            
+            <button type="button" class="btn btn-primary-custom w-100" onclick="previewFechamento()">
+                <i class="bi bi-eye"></i> Visualizar e Fechar
+            </button>
+        </div>
+    </div>
+    
+    <!-- ===== RESUMO DOS FECHAMENTOS ===== -->
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-clipboard-data"></i> Histórico de Fechamentos</h5>
+            {% if fechamentos %}
+                <div class="list-group list-group-flush">
+                    {% for f in fechamentos[:5] %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ f.mes_referencia|mes_pt }}</strong>
+                                <br>
+                                <small class="text-muted">
+                                    Entradas: R$ {{ "%.2f"|format(f.total_entradas) }} | 
+                                    Saídas: R$ {{ "%.2f"|format(f.total_saidas) }}
+                                    {% if f.status == 'estornado' %}
+                                        <span class="badge bg-warning">Estornado</span>
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div class="text-end">
+                                <a href="{{ url_for('fechamento_caixa_detalhe', fechamento_id=f.id) }}" 
+                                   class="btn btn-sm btn-outline-primary" title="Ver detalhes">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% if f.status == 'fechado' %}
+                                    <form method="POST" action="{{ url_for('fechamento_caixa_estornar', fechamento_id=f.id) }}" 
+                                          class="d-inline" 
+                                          onsubmit="return confirm('⚠️ Tem certeza que deseja estornar este fechamento? O mês será reaberto.')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Estornar">
+                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                {% if fechamentos|length > 5 %}
+                    <div class="text-center mt-2">
+                        <span class="text-muted small">+ {{ fechamentos|length - 5 }} fechamentos anteriores</span>
+                    </div>
+                {% endif %}
+            {% else %}
+                <p class="text-muted text-center py-3">
+                    <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+                    Nenhum fechamento realizado
+                </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ===== TABELA DE FECHAMENTOS ===== -->
+<div class="card mt-4">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold mb-0"><i class="bi bi-clock-history"></i> Todos os Fechamentos</h5>
+        <span class="badge bg-primary">{{ fechamentos|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Mês</th>
+                        <th>Data Fechamento</th>
+                        <th>Entradas</th>
+                        <th>Saídas</th>
+                        <th>Saldo</th>
+                        <th>Vendas</th>
+                        <th>Despesas</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in fechamentos %}
+                    <tr class="{% if f.status == 'estornado' %}table-warning{% endif %}">
+                        <td><strong>{{ f.mes_referencia|mes_pt }}</strong></td>
+                        <td>{{ f.data_fechamento.strftime('%d/%m/%Y %H:%M') if f.data_fechamento else '-' }}</td>
+                        <td class="text-success">R$ {{ "%.2f"|format(f.total_entradas) }}</td>
+                        <td class="text-danger">R$ {{ "%.2f"|format(f.total_saidas) }}</td>
+                        <td class="fw-bold">R$ {{ "%.2f"|format(f.saldo_final) }}</td>
+                        <td>{{ f.total_vendas }}</td>
+                        <td>{{ f.total_despesas }}</td>
+                        <td>
+                            {% if f.status == 'fechado' %}
+                                <span class="badge bg-success">Fechado</span>
+                            {% else %}
+                                <span class="badge bg-warning">Estornado</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('fechamento_caixa_detalhe', fechamento_id=f.id) }}" 
+                                   class="btn btn-outline-primary" title="Ver detalhes">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                {% if f.status == 'fechado' %}
+                                    <form method="POST" action="{{ url_for('fechamento_caixa_estornar', fechamento_id=f.id) }}" 
+                                          class="d-inline" 
+                                          onsubmit="return confirm('⚠️ Tem certeza que deseja estornar este fechamento?')">
+                                        <button type="submit" class="btn btn-outline-danger" title="Estornar">
+                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center py-4">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            <p class="text-muted">Nenhum fechamento registrado</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    function previewFechamento() {
+        var select = document.getElementById('selectMes');
+        var valor = select.value;
+        if (!valor) {
+            alert('Selecione um mês para fechar!');
+            return;
+        }
+        var partes = valor.split('-');
+        var ano = partes[0];
+        var mes = partes[1];
+        window.location.href = '/fechamento_caixa/preview/' + ano + '/' + mes;
+    }
+</script>
+{% endblock %}

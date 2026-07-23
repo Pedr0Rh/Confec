@@ -5,9 +5,70 @@
         <h2><i class="bi bi-coin"></i> Fluxo Financeiro</h2>
         <p class="text-muted">Controle de entradas e saídas com integração ao estoque</p>
     </div>
+    {% if not mes_fechado %}
     <button class="btn btn-primary-custom" data-bs-toggle="modal" data-bs-target="#novaTransacao">
         <i class="bi bi-plus-circle"></i> Nova Transação
     </button>
+    {% else %}
+    <button class="btn btn-secondary" disabled title="Mês fechado - Estorne para adicionar">
+        <i class="bi bi-lock"></i> Mês Fechado
+    </button>
+    {% endif %}
+</div>
+
+<!-- ===== ALERTA DE MÊS FECHADO ===== -->
+{% if mes_fechado %}
+<div class="alert alert-warning d-flex align-items-center" role="alert">
+    <i class="bi bi-lock-fill fs-4 me-3"></i>
+    <div>
+        <strong>🔒 Mês Fechado!</strong>
+        <p class="mb-0">
+            Este mês está fechado. Para <strong>editar ou excluir</strong> transações, 
+            vá em <strong>Fechamento Caixa</strong> e clique em <strong>Estornar</strong> 
+            para reabrir o mês.
+        </p>
+    </div>
+    <a href="{{ url_for('fechamento_caixa') }}" class="btn btn-sm btn-primary-custom ms-auto">
+        <i class="bi bi-box-arrow-right"></i> Ir para Fechamento
+    </a>
+</div>
+{% endif %}
+
+<!-- ===== SELETOR DE MÊS COM STATUS ===== -->
+<div class="card p-3 mb-4">
+    <div class="row g-3 align-items-center">
+        <div class="col-md-4">
+            <label class="form-label fw-semibold">📅 Selecione o Mês</label>
+            <select class="form-select" id="selectMes" onchange="mudarMes()">
+                {% for item in meses_disponiveis %}
+                    <option value="{{ item.mes_referencia.strftime('%Y-%m') }}" 
+                            {% if item.mes_referencia == mes_selecionado %}selected{% endif %}>
+                        {{ item.mes_referencia.strftime('%B/%Y')|capitalize }}
+                        {% if item.fechado %} 🔒 Fechado{% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge {% if mes_fechado %}bg-danger{% else %}bg-success{% endif %} fs-6 p-2">
+                    {% if mes_fechado %}
+                        🔒 Mês Fechado
+                    {% else %}
+                        🔓 Mês Aberto
+                    {% endif %}
+                </span>
+                {% if mes_fechado %}
+                    <a href="{{ url_for('fechamento_caixa') }}" class="btn btn-sm btn-outline-warning">
+                        <i class="bi bi-arrow-counterclockwise"></i> Estornar
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <span class="text-muted">Mês: <strong>{{ mes_label }}</strong></span>
+        </div>
+    </div>
 </div>
 
 <!-- ===== CARDS RESUMO ===== -->
@@ -28,7 +89,7 @@
     </div>
     <div class="col-6 col-md-4">
         <div class="financeiro-card saldo">
-            <div class="text-muted small">SALDO</div>
+            <div class="text-muted small">SALDO DO MÊS</div>
             <div class="valor saldo">R$ {{ "%.2f"|format(saldo or 0) }}</div>
         </div>
     </div>
@@ -95,14 +156,29 @@
                         </td>
                         <td>
                             <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarTransacao{{ transacao.id }}" title="Editar">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <form method="POST" action="{{ url_for('financeiro_delete', id=transacao.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir esta transação? O estoque será revertido.')">
-                                    <button type="submit" class="btn btn-outline-danger" title="Excluir">
-                                        <i class="bi bi-trash"></i>
+                                {% if mes_fechado %}
+                                    <!-- Mês FECHADO - Botão bloqueado -->
+                                    <button class="btn btn-outline-warning" 
+                                            onclick="alert('⚠️ Este mês está FECHADO!\\n\\nPara editar transações, vá em:\\n📊 Fechamento Caixa → Estornar o mês\\n\\nDepois você poderá editar normalmente.')" 
+                                            title="Mês Fechado - Clique para saber como estornar">
+                                        <i class="bi bi-lock"></i>
                                     </button>
-                                </form>
+                                    <button class="btn btn-outline-danger" 
+                                            onclick="alert('⚠️ Este mês está FECHADO!\\n\\nPara excluir transações, vá em:\\n📊 Fechamento Caixa → Estornar o mês\\n\\nDepois você poderá excluir normalmente.')" 
+                                            title="Mês Fechado - Clique para saber como estornar">
+                                        <i class="bi bi-lock"></i>
+                                    </button>
+                                {% else %}
+                                    <!-- Mês ABERTO - Pode editar -->
+                                    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editarTransacao{{ transacao.id }}" title="Editar">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <form method="POST" action="{{ url_for('financeiro_delete', id=transacao.id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir esta transação? O estoque será revertido.')">
+                                        <button type="submit" class="btn btn-outline-danger" title="Excluir">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>
@@ -110,7 +186,7 @@
                     <tr>
                         <td colspan="9" class="text-center text-muted py-4">
                             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                            Nenhuma transação registrada
+                            Nenhuma transação registrada para este mês
                         </td>
                     </tr>
                     {% endfor %}
@@ -361,6 +437,15 @@
 <!-- ===== SCRIPTS ===== -->
 <!-- ========================================== -->
 <script>
+    // ===== FUNÇÃO PARA MUDAR MÊS =====
+    function mudarMes() {
+        var select = document.getElementById('selectMes');
+        var valor = select.value;
+        if (valor) {
+            window.location.href = '/financeiro?mes=' + valor;
+        }
+    }
+
     // ===== FUNÇÃO PARA MOSTRAR/ESCONDER CAMPOS =====
     function toggleCampos() {
         var tipo = document.getElementById('tipoTransacao').value;
@@ -452,5 +537,39 @@
     document.addEventListener('DOMContentLoaded', function() {
         toggleCampos();
     });
+
+    // ===== SELECIONAR MÊS NO CARREGAMENTO =====
+    document.addEventListener('DOMContentLoaded', function() {
+        var select = document.getElementById('selectMes');
+        if (select) {
+            // Manter a seleção atual
+        }
+    });
 </script>
 {% endblock %}
+<!-- ===== ALERTA DE MÊS FECHADO (PERSISTENTE) ===== -->
+{% if mes_fechado %}
+<div class="alert alert-warning alert-dismissible fade show mb-4" role="alert">
+    <div class="d-flex align-items-center">
+        <i class="bi bi-lock-fill fs-2 me-3"></i>
+        <div>
+            <strong>🔒 Mês Fechado!</strong>
+            <p class="mb-0">
+                Este mês está <strong>FECHADO</strong>. Para editar ou excluir transações:
+                <br>
+                <small>
+                    1. Vá em <strong>Fechamento Caixa</strong><br>
+                    2. Clique em <strong>Estornar</strong> para reabrir o mês<br>
+                    3. Depois você poderá editar normalmente
+                </small>
+            </p>
+        </div>
+        <div class="ms-auto">
+            <a href="{{ url_for('fechamento_caixa') }}" class="btn btn-primary-custom btn-sm">
+                <i class="bi bi-box-arrow-right"></i> Ir para Fechamento
+            </a>
+            <button type="button" class="btn-close ms-2" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+</div>
+{% endif %}

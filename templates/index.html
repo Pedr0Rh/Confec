@@ -1,8 +1,39 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-header">
-    <h2><i class="bi bi-grid-1x2-fill"></i> Dashboard</h2>
-    <p class="text-muted">Visão geral da sua confecção</p>
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-grid-1x2-fill"></i> Dashboard</h2>
+        <p class="text-muted">Visão geral da sua confecção</p>
+    </div>
+</div>
+
+<!-- ===== SELETOR DE MÊS ===== -->
+<div class="card p-3 mb-4">
+    <div class="row g-3 align-items-center">
+        <div class="col-md-4">
+            <label class="form-label fw-semibold">📅 Selecione o Mês</label>
+            <select class="form-select" id="selectMesDashboard" onchange="mudarMesDashboard()">
+                {% for item in meses_disponiveis %}
+                    <option value="{{ item.mes_referencia.strftime('%Y-%m') }}" 
+                            {% if item.mes_referencia == mes_selecionado %}selected{% endif %}>
+                        {{ item.mes_referencia|mes_pt }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <span class="badge {% if mes_fechado %}bg-danger{% else %}bg-success{% endif %} fs-6 p-2">
+                {% if mes_fechado %}
+                    🔒 Mês Fechado
+                {% else %}
+                    🔓 Mês Aberto
+                {% endif %}
+            </span>
+        </div>
+        <div class="col-md-4 text-md-end">
+            <span class="text-muted">Exibindo: <strong>{{ mes_label }}</strong></span>
+        </div>
+    </div>
 </div>
 
 <!-- ===== CARDS PRINCIPAIS ===== -->
@@ -37,7 +68,7 @@
     </div>
 </div>
 
-<!-- ===== CARDS SECUNDÁRIOS ===== -->
+<!-- ===== CARDS FINANCEIROS (APENAS MÊS SELECIONADO) ===== -->
 <div class="row g-3 mb-4">
     <div class="col-4 col-md-4">
         <div class="card card-stat" style="border-color: #2ecc71;">
@@ -49,14 +80,14 @@
     <div class="col-4 col-md-4">
         <div class="card card-stat" style="border-color: #2ecc71;">
             <div class="stat-number">R$ {{ "%.2f"|format(entradas) }}</div>
-            <div class="stat-label">Entradas</div>
+            <div class="stat-label">Entradas ({{ mes_label }})</div>
             <i class="bi bi-arrow-down-circle stat-icon"></i>
         </div>
     </div>
     <div class="col-4 col-md-4">
         <div class="card card-stat" style="border-color: #e74c3c;">
             <div class="stat-number">R$ {{ "%.2f"|format(saldo) }}</div>
-            <div class="stat-label">Saldo</div>
+            <div class="stat-label">Saldo ({{ mes_label }})</div>
             <i class="bi bi-cash stat-icon"></i>
         </div>
     </div>
@@ -64,10 +95,14 @@
 
 <!-- ===== GRÁFICOS ===== -->
 <div class="row g-4">
-    <!-- Top Clientes -->
+    <!-- Top Clientes do Mês -->
     <div class="col-12 col-md-6">
         <div class="card p-3 h-100">
-            <h5 class="fw-bold mb-3"><i class="bi bi-trophy"></i> Top Clientes</h5>
+            <h5 class="fw-bold mb-3">
+                <i class="bi bi-trophy"></i> 
+                Top Clientes - {{ mes_label }}
+                <span class="badge bg-secondary ms-2">{{ top_clientes|length }}</span>
+            </h5>
             {% if top_clientes %}
             <div class="list-group list-group-flush">
                 {% for cliente in top_clientes %}
@@ -88,26 +123,26 @@
             {% else %}
             <p class="text-muted text-center py-3">
                 <i class="bi bi-inbox fs-4 d-block mb-2"></i>
-                Nenhuma venda registrada
+                Nenhuma venda registrada neste mês
             </p>
             {% endif %}
         </div>
     </div>
 
-    <!-- Vendas por Dia -->
+    <!-- Vendas por Dia do Mês -->
     <div class="col-12 col-md-6">
         <div class="card p-3 h-100">
-            <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill"></i> Últimos 7 Dias</h5>
+            <h5 class="fw-bold mb-3">
+                <i class="bi bi-bar-chart-fill"></i> 
+                Vendas - {{ mes_label }}
+                <span class="badge bg-secondary ms-2">{{ vendas_por_dia|length }} dias</span>
+            </h5>
             {% if vendas_por_dia %}
             <div class="list-group list-group-flush">
                 {% for dia in vendas_por_dia %}
                 <div class="list-group-item d-flex justify-content-between align-items-center">
                     <span>
-                        {% if dia.dia is string %}
-                            {{ dia.dia[:10] }}
-                        {% else %}
-                            {{ dia.dia.strftime('%d/%m/%Y') }}
-                        {% endif %}
+                        {{ dia.dia }}
                     </span>
                     <div>
                         <span class="badge bg-primary rounded-pill me-2">{{ dia.quantidade }} vendas</span>
@@ -119,14 +154,14 @@
             {% else %}
             <p class="text-muted text-center py-3">
                 <i class="bi bi-inbox fs-4 d-block mb-2"></i>
-                Nenhuma venda nos últimos 7 dias
+                Nenhuma venda neste mês
             </p>
             {% endif %}
         </div>
     </div>
 </div>
 
-<!-- ===== PRODUÇÃO POR ETAPA (ORGANIZADO) ===== -->
+<!-- ===== PRODUÇÃO POR ETAPA ===== -->
 <div class="row g-4 mt-2">
     <div class="col-12">
         <div class="card p-3">
@@ -146,4 +181,14 @@
         </div>
     </div>
 </div>
+
+<script>
+    function mudarMesDashboard() {
+        var select = document.getElementById('selectMesDashboard');
+        var valor = select.value;
+        if (valor) {
+            window.location.href = '/dashboard?mes=' + valor;
+        }
+    }
+</script>
 {% endblock %}

@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-eye"></i> Preview do Fechamento</h2>
+        <p class="text-muted">Confira os dados do mês <strong>{{ mes_label }}</strong></p>
+        <div class="alert alert-info mt-2">
+            <i class="bi bi-info-circle"></i> 
+            <strong>Um snapshot será salvo com todas as transações deste mês.</strong>
+            <br>
+            <small>Você poderá consultar este snapshot mesmo após editar transações futuras.</small>
+        </div>
+    </div>
+    <div>
+        <a href="{{ url_for('fechamento_caixa') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Voltar
+        </a>
+    </div>
+</div>
+
+<!-- ===== RESUMO DO MÊS ===== -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #3498db;">
+            <div class="stat-number">R$ {{ "%.2f"|format(saldo_inicial) }}</div>
+            <div class="stat-label">Saldo Inicial</div>
+            <i class="bi bi-cash stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #27ae60;">
+            <div class="stat-number">R$ {{ "%.2f"|format(entradas) }}</div>
+            <div class="stat-label">Total Entradas</div>
+            <i class="bi bi-arrow-down-circle stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #e74c3c;">
+            <div class="stat-number">R$ {{ "%.2f"|format(saidas) }}</div>
+            <div class="stat-label">Total Saídas</div>
+            <i class="bi bi-arrow-up-circle stat-icon"></i>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card card-stat" style="border-color: #f39c12;">
+            <div class="stat-number">R$ {{ "%.2f"|format(saldo_final) }}</div>
+            <div class="stat-label">Saldo Final do Mês</div>
+            <i class="bi bi-wallet2 stat-icon"></i>
+        </div>
+    </div>
+</div>
+
+<!-- ===== DETALHES ===== -->
+<div class="row g-4 mb-4">
+    <div class="col-md-7">
+        <div class="card p-3">
+            <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart"></i> Resumo do Mês</h5>
+            <div class="row g-2">
+                <div class="col-6">
+                    <div class="bg-light p-2 rounded text-center" style="background: #d4edda !important;">
+                        <div style="font-size: 0.7rem; color: #155724;">Total de Vendas</div>
+                        <div class="fw-bold" style="color: #155724;">{{ total_vendas }}</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="bg-light p-2 rounded text-center" style="background: #f8d7da !important;">
+                        <div style="font-size: 0.7rem; color: #721c24;">Total de Despesas</div>
+                        <div class="fw-bold" style="color: #721c24;">{{ total_despesas }}</div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="bg-light p-2 rounded text-center">
+                        <div style="font-size: 0.7rem; color: #6c757d;">Ticket Médio</div>
+                        <div class="fw-bold">R$ {{ "%.2f"|format(ticket_medio) }}</div>
+                    </div>
+                </div>
+            </div>
+            
+            {% if fechamentos_anteriores %}
+            <hr>
+            <h6 class="fw-bold mt-2">Fechamentos Anteriores</h6>
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Mês</th>
+                            <th>Saldo Final</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for fa in fechamentos_anteriores %}
+                        <tr>
+                            <td>{{ fa.mes_referencia|mes_pt }}</td>
+                            <td>R$ {{ "%.2f"|format(fa.saldo_final) }}</td>
+                            <td>
+                                {% if fa.status == 'fechado' %}
+                                    <span class="badge bg-success">Fechado</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Estornado</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="col-md-5">
+        <div class="card p-3" style="border-left: 4px solid var(--secondary-color);">
+            <h5 class="fw-bold mb-3"><i class="bi bi-check-circle"></i> Confirmar Fechamento</h5>
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i>
+                <strong>Ao fechar:</strong>
+                <ul class="mb-0 small">
+                    <li>Um <strong>snapshot</strong> será salvo com todas as transações</li>
+                    <li>O mês será <strong>arquivado</strong> para consulta futura</li>
+                    <li>Você poderá <strong>estornar</strong> para reabrir o mês</li>
+                </ul>
+            </div>
+            
+            <form method="POST" action="{{ url_for('fechamento_caixa_confirmar') }}" 
+                  onsubmit="return confirm('⚠️ Tem certeza que deseja fechar o mês {{ mes_label }}? Um snapshot será salvo.')">
+                <input type="hidden" name="ano" value="{{ ano }}">
+                <input type="hidden" name="mes" value="{{ mes }}">
+                
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Observação (opcional)</label>
+                    <textarea name="observacao" class="form-control" rows="2" placeholder="Comentários sobre este fechamento..."></textarea>
+                </div>
+                
+                <div class="alert alert-info small">
+                    <i class="bi bi-info-circle"></i> 
+                    <strong>Saldo a ser arquivado:</strong> R$ {{ "%.2f"|format(saldo_final) }}
+                    <br>
+                    <small>{{ total_vendas + total_despesas }} transações serão salvas no snapshot</small>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary-custom">
+                        <i class="bi bi-lock"></i> Confirmar Fechamento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== TRANSAÇÕES DO MÊS ===== -->
+<div class="card">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold mb-0"><i class="bi bi-list"></i> Transações do Mês</h5>
+        <span class="badge bg-primary">{{ ultimas_transacoes|length }}</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Cliente</th>
+                        <th>Produto</th>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in ultimas_transacoes %}
+                    <tr>
+                        <td>{{ t.data.strftime('%d/%m/%Y %H:%M') if t.data else '-' }}</td>
+                        <td>{{ t.descricao }}</td>
+                        <td>{{ t.cliente_nome or '-' }}</td>
+                        <td>{{ t.produto_nome or '-' }}</td>
+                        <td>
+                            <span class="badge {% if t.tipo == 'entrada' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ 'Venda' if t.tipo == 'entrada' else 'Despesa' }}
+                            </span>
+                        </td>
+                        <td class="{% if t.tipo == 'entrada' %}text-success{% else %}text-danger{% endif %} fw-bold">
+                            R$ {{ "%.2f"|format(t.valor) }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-3">
+                            <span class="text-muted">Nenhuma transação neste mês</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

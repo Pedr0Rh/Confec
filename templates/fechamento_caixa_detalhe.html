@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap">
+    <div>
+        <h2><i class="bi bi-file-earmark-text"></i> Detalhes do Fechamento</h2>
+        <p class="text-muted">Mês: <strong>{{ fechamento.mes_referencia|mes_pt }}</strong></p>
+        
+        {% if fechamento.transacoes_snapshot %}
+            <div class="alert alert-info mt-2">
+                <i class="bi bi-camera"></i> 
+                <strong>Este é um SNAPSHOT do momento do fechamento!</strong>
+                <br>
+                <small>As transações abaixo são do dia 
+                    <strong>{{ fechamento.data_fechamento.strftime('%d/%m/%Y %H:%M') }}</strong>
+                </small>
+            </div>
+        {% endif %}
+        
+        {% if fechamento.status == 'estornado' %}
+            <div class="alert alert-warning mt-2">
+                <i class="bi bi-arrow-counterclockwise"></i> 
+                <strong>Mês ESTORNADO!</strong>
+                <br>
+                <small>Este fechamento foi estornado em 
+                    <strong>{{ fechamento.estornado_em.strftime('%d/%m/%Y %H:%M') if fechamento.estornado_em else '-' }}</strong>
+                </small>
+            </div>
+        {% endif %}
+    </div>
+    <div>
+        <a href="{{ url_for('fechamento_caixa') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Voltar
+        </a>
+    </div>
+</div>
+
+<!-- ===== RESUMO DO FECHAMENTO ===== -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-2">
+        <div class="card card-stat" style="border-color: #3498db;">
+            <div class="stat-number">R$ {{ "%.2f"|format(fechamento.saldo_inicial) }}</div>
+            <div class="stat-label">Saldo Inicial</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card card-stat" style="border-color: #27ae60;">
+            <div class="stat-number">R$ {{ "%.2f"|format(fechamento.total_entradas) }}</div>
+            <div class="stat-label">Entradas (snapshot)</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card card-stat" style="border-color: #e74c3c;">
+            <div class="stat-number">R$ {{ "%.2f"|format(fechamento.total_saidas) }}</div>
+            <div class="stat-label">Saídas (snapshot)</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card card-stat" style="border-color: #f39c12;">
+            <div class="stat-number">R$ {{ "%.2f"|format(fechamento.saldo_final) }}</div>
+            <div class="stat-label">Saldo Final</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card card-stat" style="border-color: #9b59b6;">
+            <div class="stat-number">{{ fechamento.total_vendas }}</div>
+            <div class="stat-label">Vendas</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-2">
+        <div class="card card-stat" style="border-color: #e67e22;">
+            <div class="stat-number">{{ fechamento.total_despesas }}</div>
+            <div class="stat-label">Despesas</div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== INFORMAÇÕES ADICIONAIS ===== -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h6 class="fw-bold">Informações do Fechamento</h6>
+            <hr>
+            <div class="row">
+                <div class="col-6">
+                    <span class="text-muted">Data do Fechamento:</span>
+                </div>
+                <div class="col-6">
+                    <strong>{{ fechamento.data_fechamento.strftime('%d/%m/%Y %H:%M') }}</strong>
+                </div>
+                <div class="col-6">
+                    <span class="text-muted">Status:</span>
+                </div>
+                <div class="col-6">
+                    {% if fechamento.status == 'fechado' %}
+                        <span class="badge bg-success">Fechado</span>
+                    {% else %}
+                        <span class="badge bg-warning">Estornado</span>
+                        {% if fechamento.estornado_em %}
+                            <br><small>Estornado em: {{ fechamento.estornado_em.strftime('%d/%m/%Y %H:%M') }}</small>
+                        {% endif %}
+                    {% endif %}
+                </div>
+                <div class="col-6">
+                    <span class="text-muted">Fechado por:</span>
+                </div>
+                <div class="col-6">
+                    <strong>{{ fechamento.fechado_por_nome or '-' }}</strong>
+                </div>
+                {% if fechamento.resumo_detalhado %}
+                    {% set resumo = fechamento.resumo_detalhado|from_json %}
+                    <div class="col-12 mt-2">
+                        <span class="text-muted">Transações no snapshot:</span>
+                        <strong>{{ resumo.quantidade_transacoes or 0 }}</strong>
+                    </div>
+                {% endif %}
+                {% if fechamento.observacao %}
+                <div class="col-12 mt-2">
+                    <span class="text-muted">Observação:</span>
+                    <p class="mt-1">{{ fechamento.observacao }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h6 class="fw-bold">Ações</h6>
+            <hr>
+            {% if fechamento.status == 'fechado' %}
+                <form method="POST" action="{{ url_for('fechamento_caixa_estornar', fechamento_id=fechamento.id) }}" 
+                      onsubmit="return confirm('⚠️ Tem certeza que deseja estornar este fechamento? O mês será reaberto.')">
+                    <button type="submit" class="btn btn-danger w-100">
+                        <i class="bi bi-arrow-counterclockwise"></i> Estornar Fechamento
+                    </button>
+                </form>
+                <p class="text-muted small mt-2">⚠️ Ao estornar, o mês será reaberto e você poderá editar as transações.</p>
+            {% else %}
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> Este fechamento já foi estornado.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- ===== TRANSAÇÕES DO SNAPSHOT ===== -->
+<div class="card">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <h5 class="fw-bold mb-0">
+            <i class="bi bi-camera"></i> 
+            Snapshot do Fechamento
+            <span class="badge bg-info ms-2">Fechado em {{ fechamento.data_fechamento.strftime('%d/%m/%Y %H:%M') }}</span>
+        </h5>
+        <span class="badge bg-primary">{{ transacoes|length }} transações</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Cliente</th>
+                        <th>Produto</th>
+                        <th>Tipo</th>
+                        <th>Qtd</th>
+                        <th>Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in transacoes %}
+                    <tr>
+                        <td>
+                            {% if t.data is string %}
+                                {{ t.data[:16].replace('T', ' ') }}
+                            {% elif t.data %}
+                                {{ t.data.strftime('%d/%m/%Y %H:%M') }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ t.descricao }}</td>
+                        <td>{{ t.cliente_nome or '-' }}</td>
+                        <td>{{ t.produto_nome or '-' }}</td>
+                        <td>
+                            <span class="badge {% if t.tipo == 'entrada' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ 'Venda' if t.tipo == 'entrada' else 'Despesa' }}
+                            </span>
+                        </td>
+                        <td>{{ t.quantidade or 0 }}</td>
+                        <td class="{% if t.tipo == 'entrada' %}text-success{% else %}text-danger{% endif %} fw-bold">
+                            R$ {{ "%.2f"|format(t.valor) }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center py-3">
+                            <span class="text-muted">Nenhuma transação no snapshot</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="fw-bold">
+                        <td colspan="6" class="text-end">Total de Entradas (snapshot):</td>
+                        <td class="text-success">R$ {{ "%.2f"|format(fechamento.total_entradas) }}</td>
+                    </tr>
+                    <tr class="fw-bold">
+                        <td colspan="6" class="text-end">Total de Saídas (snapshot):</td>
+                        <td class="text-danger">R$ {{ "%.2f"|format(fechamento.total_saidas) }}</td>
+                    </tr>
+                    <tr class="fw-bold" style="background: #f8f9fa;">
+                        <td colspan="6" class="text-end">Saldo Final (snapshot):</td>
+                        <td class="text-primary">R$ {{ "%.2f"|format(fechamento.saldo_final) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <a href="{{ url_for('fechamento_caixa') }}" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Voltar
+    </a>
+</div>
+{% endblock %}
